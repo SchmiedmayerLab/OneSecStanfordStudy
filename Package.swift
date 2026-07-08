@@ -10,6 +10,11 @@
 
 import PackageDescription
 
+let swiftSettings: [SwiftSetting] = [
+    .enableUpcomingFeature("ExistentialAny"),
+    .enableUpcomingFeature("InternalImportsByDefault")
+]
+
 let package = Package(
     name: "OneSecStanfordStudy",
     platforms: [
@@ -32,20 +37,14 @@ let package = Package(
                 .product(name: "HealthKitOnFHIR", package: "Spezi"),
                 .product(name: "SpeziLocalStorage", package: "Spezi")
             ],
-            swiftSettings: [
-                .enableUpcomingFeature("ExistentialAny"),
-                .enableUpcomingFeature("InternalImportsByDefault")
-            ]
+            swiftSettings: swiftSettings
         ),
         .testTarget(
             name: "OneSecStanfordStudyTests",
             dependencies: [
                 .target(name: "OneSecStanfordStudy")
             ],
-            swiftSettings: [
-                .enableUpcomingFeature("ExistentialAny"),
-                .enableUpcomingFeature("InternalImportsByDefault")
-            ]
+            swiftSettings: swiftSettings
         )
     ],
     swiftLanguageModes: [.v6]

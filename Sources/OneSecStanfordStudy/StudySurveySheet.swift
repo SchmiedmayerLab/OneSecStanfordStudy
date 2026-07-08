@@ -18,6 +18,7 @@ struct StudySurveySheet: View {
     @State private var isShowingCancelAlert = false
     @State private var isDone = false
     @State private var currentPageLoadProgress: Double?
+    @State private var healthExportErrorMessage: String?
 
     var body: some View {
         if let url = oneSecStanfordStudy.surveyUrl {
@@ -58,6 +59,22 @@ struct StudySurveySheet: View {
                 }
             }
             .interactiveDismissDisabled()
+            .alert(
+                "Unable to Start Health Export",
+                isPresented: Binding {
+                    healthExportErrorMessage != nil
+                } set: { newValue in
+                    if !newValue {
+                        healthExportErrorMessage = nil
+                    }
+                }
+            ) {
+                Button("OK") {
+                    healthExportErrorMessage = nil
+                }
+            } message: {
+                Text(healthExportErrorMessage ?? "Please try again.")
+            }
         } else {
             ContentUnavailableView("MISSING_URL", systemImage: "exclamationmark.triangle")
         }
@@ -143,8 +160,8 @@ struct StudySurveySheet: View {
         do {
             try await oneSecStanfordStudy.triggerHealthExport(forceSessionReset: true)
         } catch {
-            // Q how to handle this? (will depend on the specific error. eg for missing permissions we could throw up an alert, etc)
             oneSecStanfordStudy.logger.error("Error initiating bulk health export: \(error)")
+            healthExportErrorMessage = error.localizedDescription
         }
     }
 }
@@ -152,14 +169,21 @@ struct StudySurveySheet: View {
 @available(iOS 17, *)
 extension WebViewProxy {
     func pageContainsField(named variableName: String) async -> Bool {
-        (try? await evaluateJavaScript(
-            #"document.querySelector('div[data-mlm-field="\#(variableName)"]') !== null"#
-        ) as? Bool) == true
+        let result = try? await callAsyncJavaScript(
+            """
+            const elements = document.querySelectorAll("div[data-mlm-field]");
+            return Array.from(elements).some(element => element.getAttribute("data-mlm-field") === name);
+            """,
+            arguments: ["name": variableName]
+        )
+        return (result as? Bool) == true
     }
 
     func pageContainsElement(withId id: String) async -> Bool {
-        (try? await evaluateJavaScript(
-            "document.getElementById('\(id)') !== null"
-        ) as? Bool) == true
+        let result = try? await callAsyncJavaScript(
+            "return document.getElementById(id) !== null;",
+            arguments: ["id": id]
+        )
+        return (result as? Bool) == true
     }
 }

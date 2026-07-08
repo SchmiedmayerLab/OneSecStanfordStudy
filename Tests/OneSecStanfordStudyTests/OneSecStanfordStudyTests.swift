@@ -49,4 +49,47 @@ struct OneSecStanfordStudyTests {
 
         #expect(values == [1, 2, 3])
     }
+
+    @Test
+    func anyAsyncSequencePropagatesErrors() async throws {
+        enum TestError: Error, Equatable {
+            case failure
+        }
+
+        let stream = AsyncThrowingStream<Int, any Error> { continuation in
+            continuation.yield(1)
+            continuation.finish(throwing: TestError.failure)
+        }
+        let sequence = AnyAsyncSequence<Int, any Error>(stream)
+
+        var values: [Int] = []
+        var caughtError: (any Error)?
+        do {
+            for try await value in sequence {
+                values.append(value)
+            }
+        } catch {
+            caughtError = error
+        }
+
+        #expect(values == [1])
+        #expect(caughtError as? TestError == .failure)
+    }
+
+    @available(iOS 18.0, *)
+    @Test
+    func anyAsyncSequenceSupportsIsolationAwareIteration() async {
+        let stream = AsyncStream<Int> { continuation in
+            continuation.yield(1)
+            continuation.finish()
+        }
+        let sequence = AnyAsyncSequence<Int, Never>(stream)
+        var iterator = sequence.makeAsyncIterator()
+
+        let firstValue = await iterator.next(isolation: nil)
+        let secondValue = await iterator.next(isolation: nil)
+
+        #expect(firstValue == 1)
+        #expect(secondValue == nil)
+    }
 }

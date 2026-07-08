@@ -45,13 +45,13 @@ struct WebView: View {
             currentUrl: $currentUrl,
             currentProgress: $currentProgress,
             onAlert: { message in
-                assert(alert == nil, "Already presenting an alert!") // Q: is this smth we need to worry about (stacked alerts...)
+                cancelPendingJavaScriptDialog()
                 await withCheckedContinuation { continuation in
                     alert = .init(message: message, continuation: continuation)
                 }
             },
             onConfirm: { message in
-                assert(confirmation == nil, "Already presenting an alert!") // Q: is this smth we need to worry about (stacked alerts...)
+                cancelPendingJavaScriptDialog()
                 return await withCheckedContinuation { continuation in
                     confirmation = .init(message: message, continuation: continuation)
                 }
@@ -64,14 +64,13 @@ struct WebView: View {
             } set: { newValue in
                 // Note that we intentionally ignore `newValue == true` in here!
                 if !newValue {
-                    self.alert = nil
+                    dismissAlert()
                 }
             },
             presenting: alert
-        ) { config in
+        ) { _ in
             Button("OK") {
-                config.continuation.resume()
-                self.alert = nil
+                dismissAlert()
             }
         } message: { config in
             Text(config.message)
@@ -83,18 +82,16 @@ struct WebView: View {
             } set: { newValue in
                 // Note that we intentionally ignore `newValue == true` in here!
                 if !newValue {
-                    self.confirmation = nil
+                    dismissConfirmation(returning: false)
                 }
             },
             presenting: confirmation
-        ) { config in
+        ) { _ in
             let cancelImp = {
-                config.continuation.resume(returning: false)
-                self.confirmation = nil
+                dismissConfirmation(returning: false)
             }
             let confirmImp = {
-                config.continuation.resume(returning: true)
-                self.confirmation = nil
+                dismissConfirmation(returning: true)
             }
             #if compiler(>=6.2)
             if #available(iOS 26, *) {
@@ -128,6 +125,27 @@ struct WebView: View {
         config = .init(initialUrl: url, shouldNavigate: shouldNavigate, didNavigate: didNavigate)
         _currentProgress = currentProgress
     }
+
+    private func cancelPendingJavaScriptDialog() {
+        dismissAlert()
+        dismissConfirmation(returning: false)
+    }
+
+    private func dismissAlert() {
+        guard let alert else {
+            return
+        }
+        self.alert = nil
+        alert.continuation.resume()
+    }
+
+    private func dismissConfirmation(returning result: Bool) {
+        guard let confirmation else {
+            return
+        }
+        self.confirmation = nil
+        confirmation.continuation.resume(returning: result)
+    }
 }
 
 @available(iOS 17, *)
@@ -145,6 +163,10 @@ struct WebViewProxy {
 
     func evaluateJavaScript(_ script: String) async throws -> Any? {
         try await wkWebView.evaluateJavaScript(script)
+    }
+
+    func callAsyncJavaScript(_ script: String, arguments: [String: Any] = [:]) async throws -> Any? {
+        try await wkWebView.callAsyncJavaScript(script, arguments: arguments, in: nil, contentWorld: .page)
     }
 }
 

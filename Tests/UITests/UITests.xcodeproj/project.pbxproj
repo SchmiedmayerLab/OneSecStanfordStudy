@@ -17,7 +17,7 @@
 			containerPortal = 2F6D138A28F5F384007C25D6 /* Project object */;
 			proxyType = 1;
 			remoteGlobalIDString = 2F6D139128F5F384007C25D6;
-			remoteInfo = Example;
+			remoteInfo = TestApp;
 		};
 /* End PBXContainerItemProxy section */
 
@@ -138,7 +138,7 @@
 			packageProductDependencies = (
 				809757DB2E61D2AD009B747D /* OneSecStanfordStudy */,
 			);
-			productName = Example;
+			productName = TestApp;
 			productReference = 2F6D139228F5F384007C25D6 /* TestApp.app */;
 			productType = "com.apple.product-type.application";
 		};
@@ -159,7 +159,7 @@
 				80B77D022E422FBB0089C6B4 /* TestAppUITests */,
 			);
 			name = TestAppUITests;
-			productName = ExampleUITests;
+			productName = TestAppUITests;
 			productReference = 2F6D13AC28F5F386007C25D6 /* TestAppUITests.xctest */;
 			productType = "com.apple.product-type.bundle.ui-testing";
 		};

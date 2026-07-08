@@ -22,7 +22,11 @@ struct ContentView: View {
                     StudyButton()
                     Button("Trigger Health Export") {
                         Task {
-                            try await oneSecStanfordStudy.triggerHealthExport(forceSessionReset: true)
+                            do {
+                                try await oneSecStanfordStudy.triggerHealthExport(forceSessionReset: true)
+                            } catch {
+                                fatalError("Health export failed: \(error)")
+                            }
                         }
                     }
                 }

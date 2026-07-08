@@ -16,6 +16,7 @@ OneSecStanfordStudy contributors
 * [Paul Schmiedmayer](https://github.com/PSchmiedmayer)
 
 
-## Attributions
+Attributions
+------------
 
 This package is based on the original [implementation repository](https://github.com/StanfordBDHG/OneSecStudySpeziIntegration) and [interface repository](https://github.com/StanfordBDHG/OneSecStudySpeziIntegrationInterface), which were published under the MIT License.
