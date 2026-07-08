@@ -1,16 +1,24 @@
 .DS_Store
 
 # Swift Package Manager
+/.build/
 .build/
+**/.build/
+/.swiftpm/
 .swiftpm/
+**/.swiftpm/
+/Package.resolved
 Package.resolved
 
 # Xcode
 DerivedData/
+**/DerivedData/
+.derivedData/
+**/.derivedData/
 xcuserdata/
+**/xcuserdata/
 *.xcuserstate
 *.xcscmblueprint
 
 # SwiftPM/Xcode editor output
 .vscode/
-
