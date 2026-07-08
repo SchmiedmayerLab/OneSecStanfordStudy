@@ -1,0 +1,20 @@
+#
+# This source file is part of the OneSecStanfordStudy open-source project
+#
+# SPDX-FileCopyrightText: 2026 Stanford University and the project authors (see CONTRIBUTORS.md)
+#
+# SPDX-License-Identifier: MIT
+#
+
+excluded:
+  - .build
+  - .swiftpm
+  - .derivedData
+  - Tests/UITests/.derivedData
+
+disabled_rules:
+  - blanket_disable_command
+
+line_length:
+  warning: 150
+  error: 150
