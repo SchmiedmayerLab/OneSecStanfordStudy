@@ -83,7 +83,7 @@ struct WebView: View {
             } set: { newValue in
                 // Note that we intentionally ignore `newValue == true` in here!
                 if !newValue {
-                    self.alert = nil
+                    self.confirmation = nil
                 }
             },
             presenting: confirmation

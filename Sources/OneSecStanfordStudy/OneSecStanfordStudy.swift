@@ -109,6 +109,7 @@ final class OneSecStanfordStudy: OneSecStanfordStudyModule, Module, EnvironmentA
         try await healthKit.askForAuthorization(for: .init(read: healthExportConfig.sampleTypes))
         let session = try await healthExportSession()
         let stream = try session.start(retryFailedBatches: true)
+        try localStorage.store(true, for: .didInitiateBulkExport)
         if #available(iOS 18, *) {
             healthExportConfig.didStartExport(AnyAsyncSequence(stream.compactMap(\.self)))
         } else {
@@ -138,6 +139,7 @@ final class OneSecStanfordStudy: OneSecStanfordStudyModule, Module, EnvironmentA
             }
         }
         if isCompleted {
+            try? localStorage.store(false, for: .didInitiateBulkExport)
             healthExportConfig.didEndExport()
         }
     }

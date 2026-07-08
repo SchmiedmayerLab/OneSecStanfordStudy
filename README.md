@@ -50,7 +50,7 @@ Then add the product dependency to the target that needs it:
 
 ## Usage
 
-Call `initialize(_:launchOptions:healthExportConfig:)` from your app delegate's `application(_:willFinishLaunchingWithOptions:)` method:
+Call `initializeOneSecStanfordStudy(_:launchOptions:healthExportConfig:)` from your app delegate's `application(_:willFinishLaunchingWithOptions:)` method:
 
 ```swift
 import OneSecStanfordStudy
@@ -61,7 +61,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         _ application: UIApplication,
         willFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
-        initialize(
+        initializeOneSecStanfordStudy(
             application,
             launchOptions: launchOptions,
             healthExportConfig: HealthExportConfiguration(
