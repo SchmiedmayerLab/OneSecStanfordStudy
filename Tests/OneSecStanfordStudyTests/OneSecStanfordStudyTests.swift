@@ -6,7 +6,7 @@
 // SPDX-License-Identifier: MIT
 //
 
-@testable import OneSecStanfordStudy
+import OneSecStanfordStudy
 import Foundation
 import HealthKit
 import Testing
@@ -15,7 +15,7 @@ import Testing
 struct OneSecStanfordStudyTests {
     @Test
     func healthExportConfigurationStoresValues() {
-        let destination = URL(filePath: "/tmp/one-sec-export")
+        let destination = URL(fileURLWithPath: "/tmp/one-sec-export")
         let sampleTypes: Set<HKObjectType> = []
         let timeRange = Date(timeIntervalSince1970: 0)..<Date(timeIntervalSince1970: 1)
 

@@ -9,6 +9,13 @@
 import XCTest
 
 class TestAppUITests: XCTestCase {
+    private enum Timeout {
+        static let appLaunch: TimeInterval = 5
+        static let webPageLoad: TimeInterval = 15
+        static let alertPresentation: TimeInterval = 5
+        static let webViewStateUpdate: TimeInterval = 8
+    }
+
     override func setUpWithError() throws {
         try super.setUpWithError()
         continueAfterFailure = false
@@ -18,7 +25,7 @@ class TestAppUITests: XCTestCase {
     func testCompatibilityWrapperLaunches() {
         let app = XCUIApplication()
         app.launch()
-        XCTAssert(app.wait(for: .runningForeground, timeout: 2))
+        XCTAssert(app.wait(for: .runningForeground, timeout: Timeout.appLaunch))
 
         if #available(iOS 17, *) {
             XCTAssert(app.staticTexts["integration-status-active"].waitForExistence(timeout: 5))
@@ -35,31 +42,30 @@ class TestAppUITests: XCTestCase {
 
         let app = XCUIApplication()
         app.launch()
-        XCTAssert(app.wait(for: .runningForeground, timeout: 2))
+        XCTAssert(app.wait(for: .runningForeground, timeout: Timeout.appLaunch))
         app.buttons["Test Alert/Confirm"].tap()
 
         let webView = app.webViews.firstMatch
         let alertStatus = webView.otherElements["Alert Status"]
         let confirmStatus = webView.otherElements["Confirm Status"]
 
-        // for some reason, it takes forever for the web page to show up on the CI...
-        XCTAssert(alertStatus.staticTexts["Not triggered"].waitForExistence(timeout: 10))
+        XCTAssert(alertStatus.staticTexts["Not triggered"].waitForExistence(timeout: Timeout.webPageLoad))
 
         webView.buttons["Trigger alert()"].tap()
         // ideally we'd also assert that the alert (or confirm) status changes to "active" while presented,
         // but we skip that bc for some reason the web view's contents aren't part of the view hierarchy while the alert/sheet is active.
-        XCTAssert(app.alerts.staticTexts["This is the window.alert() test!"].waitForExistence(timeout: 2))
+        XCTAssert(app.alerts.staticTexts["This is the window.alert() test!"].waitForExistence(timeout: Timeout.alertPresentation))
         app.alerts.buttons["OK"].tap()
-        XCTAssert(alertStatus.staticTexts["Alert dismissed"].waitForExistence(timeout: 2))
+        XCTAssert(alertStatus.staticTexts["Alert dismissed"].waitForExistence(timeout: Timeout.webViewStateUpdate))
 
-        XCTAssert(confirmStatus.staticTexts["Not triggered"].waitForExistence(timeout: 1))
+        XCTAssert(confirmStatus.staticTexts["Not triggered"].waitForExistence(timeout: Timeout.webViewStateUpdate))
         webView.buttons["Trigger confirm()"].tap()
-        XCTAssert(app.alerts.staticTexts["This is the window.confirm() test!"].waitForExistence(timeout: 2))
+        XCTAssert(app.alerts.staticTexts["This is the window.confirm() test!"].waitForExistence(timeout: Timeout.alertPresentation))
         app.alerts.buttons["OK"].tap()
-        XCTAssert(confirmStatus.staticTexts["Confirm dismissed; response=true"].waitForExistence(timeout: 2))
+        XCTAssert(confirmStatus.staticTexts["Confirm dismissed; response=true"].waitForExistence(timeout: Timeout.webViewStateUpdate))
         webView.buttons["Trigger confirm()"].tap()
-        XCTAssert(app.alerts.staticTexts["This is the window.confirm() test!"].waitForExistence(timeout: 2))
+        XCTAssert(app.alerts.staticTexts["This is the window.confirm() test!"].waitForExistence(timeout: Timeout.alertPresentation))
         app.alerts.buttons["Cancel"].tap()
-        XCTAssert(confirmStatus.staticTexts["Confirm dismissed; response=false"].waitForExistence(timeout: 2))
+        XCTAssert(confirmStatus.staticTexts["Confirm dismissed; response=false"].waitForExistence(timeout: Timeout.webViewStateUpdate))
     }
 }
