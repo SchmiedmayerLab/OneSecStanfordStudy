@@ -26,87 +26,22 @@ permissions:
   pull-requests: write
 
 jobs:
-  setup:
-    name: Set Up Swift Package
-    uses: SchmiedmayerLab/.github/.github/workflows/swift-package-setup.yml@v0.2
-
-  static-analysis:
-    name: Analyze Swift Package
-    needs: setup
-    uses: SchmiedmayerLab/.github/.github/workflows/swift-package-static-analysis.yml@v0.2
-    with:
-      library_products: ${{ needs.setup.outputs.library_products }}
-      platform_name: ${{ needs.setup.outputs.platform_name }}
-      platform_version: ${{ needs.setup.outputs.platform_version }}
-      diagnose_breaking_changes: false
-
-  package-tests:
-    name: Test Swift Package
-    needs: setup
-    uses: SchmiedmayerLab/.github/.github/workflows/xcodebuild.yml@v0.2
-    strategy:
-      fail-fast: false
-      matrix:
-        platform: ${{ fromJSON(needs.setup.outputs.platform_matrix) }}
-        config: [Debug, Release]
-    with:
-      job_name: ${{ format('{0} ({1})', matrix.platform.name, matrix.config) }}
-      scheme: ${{ needs.setup.outputs.scheme }}
-      destination: ${{ matrix.platform.destination }}
-      buildConfig: ${{ matrix.config }}
-      resultBundle: ${{ format('{0}-{1}-{2}.xcresult', needs.setup.outputs.package_name, matrix.platform.name, matrix.config) }}
-
-  ui-tests:
-    name: Test UI App
-    needs: setup
-    if: needs.setup.outputs.ui_platform_matrix != '[]'
-    uses: SchmiedmayerLab/.github/.github/workflows/xcodebuild.yml@v0.2
-    strategy:
-      fail-fast: false
-      matrix:
-        platform: ${{ fromJSON(needs.setup.outputs.ui_platform_matrix) }}
-        config: [Debug, Release]
-    with:
-      job_name: ${{ format('UI {0} ({1})', matrix.platform.name, matrix.config) }}
-      path: Tests/UITests
-      scheme: ${{ matrix.platform.scheme }}
-      destination: ${{ matrix.platform.destination }}
-      buildConfig: ${{ matrix.config }}
-      resultBundle: ${{ format('{0}-{1}-{2}.xcresult', matrix.platform.scheme, matrix.platform.name, matrix.config) }}
-
-  coverage:
-    name: Upload Coverage
-    needs: [setup, package-tests, ui-tests]
-    if: always() && !cancelled() && !failure()
-    uses: SchmiedmayerLab/.github/.github/workflows/coverage.yml@v0.2
-    with:
-      coveragereports: >-
-        ${{ format('{0}-*.xcresult', needs.setup.outputs.package_name) }}
-        TestApp-*.xcresult
+  swift-package-ci:
+    name: Swift Package CI
+    uses: SchmiedmayerLab/.github/.github/workflows/swift-package-ci.yml@v0.2
     secrets: inherit
 
   all-tests-pass:
     name: All tests pass
     if: always()
-    needs: [setup, static-analysis, package-tests, ui-tests, coverage]
+    needs: swift-package-ci
     runs-on: ubuntu-latest
     steps:
       - name: Verify CI results
         run: |
-          echo "setup           = ${{ needs.setup.result }}"
-          echo "static-analysis = ${{ needs.static-analysis.result }}"
-          echo "package-tests   = ${{ needs.package-tests.result }}"
-          echo "ui-tests        = ${{ needs.ui-tests.result }}"
-          echo "coverage        = ${{ needs.coverage.result }}"
-          for result in \
-            "${{ needs.setup.result }}" \
-            "${{ needs.static-analysis.result }}" \
-            "${{ needs.package-tests.result }}" \
-            "${{ needs.ui-tests.result }}" \
-            "${{ needs.coverage.result }}"; do
-            case "$result" in
-              success|skipped) ;;
-              *) echo "::error::One or more required jobs did not pass (result: $result)."; exit 1 ;;
-            esac
-          done
+          echo "swift-package-ci = ${{ needs.swift-package-ci.result }}"
+          if [ "${{ needs.swift-package-ci.result }}" != "success" ]; then
+            echo "::error::Swift Package CI did not pass."
+            exit 1
+          fi
           echo "All required checks passed."
