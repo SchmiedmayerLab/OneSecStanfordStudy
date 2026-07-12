@@ -34,8 +34,7 @@ let package = Package(
                 .product(name: "SpeziFoundation", package: "Spezi"),
                 .product(name: "SpeziHealthKit", package: "Spezi"),
                 .product(name: "SpeziHealthKitBulkExport", package: "Spezi"),
-                .product(name: "HealthKitOnFHIR", package: "Spezi"),
-                .product(name: "SpeziLocalStorage", package: "Spezi")
+                .product(name: "HealthKitOnFHIR", package: "Spezi")
             ],
             swiftSettings: swiftSettings
         ),

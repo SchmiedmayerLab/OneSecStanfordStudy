@@ -9,9 +9,9 @@
 // swiftlint:disable file_types_order
 
 @_spi(APISupport) import Spezi
+private import SpeziFoundation
 private import SpeziHealthKit
 private import SpeziHealthKitBulkExport
-private import SpeziLocalStorage
 import OSLog
 import SwiftUI
 import UIKit
@@ -48,10 +48,10 @@ final class OneSecStanfordStudy: OneSecStanfordStudyModule, Module, EnvironmentA
     @ObservationIgnored @Application(\.logger) var logger
     @ObservationIgnored @Dependency(HealthKit.self) private var healthKit
     @ObservationIgnored @Dependency(BulkHealthExporter.self) private var bulkExporter
-    @ObservationIgnored @Dependency(LocalStorage.self) private var localStorage
 
     nonisolated private let healthExportConfig: HealthExportConfiguration
     nonisolated(unsafe) private let fileManager = FileManager.default
+    private let prefsStore = LocalPreferencesStore.standard
 
     /// Creates a new instance of the `OneSecStanfordStudy` module
     nonisolated init(healthExportConfig: HealthExportConfiguration) {
@@ -69,10 +69,10 @@ final class OneSecStanfordStudy: OneSecStanfordStudyModule, Module, EnvironmentA
     }
 
     func configure() {
-        updateState((try? localStorage.load(.oneSecStanfordStudyState)) ?? .available)
+        updateState(prefsStore[.oneSecStanfordStudyState])
         Task {
             do {
-                if try localStorage.load(.didInitiateBulkExport) == true {
+                if prefsStore[.didInitiateBulkExport] {
                     // we've initiated the Health Export at some point in the past.
                     // we now check if it has completed, and, if not, tell it to continue.
                     let session = try await healthExportSession()
@@ -88,7 +88,7 @@ final class OneSecStanfordStudy: OneSecStanfordStudyModule, Module, EnvironmentA
 
     override func updateState(_ newState: OneSecStanfordStudyModule.State) {
         if newState != state {
-            try? localStorage.store(newState, for: .oneSecStanfordStudyState)
+            prefsStore[.oneSecStanfordStudyState] = newState
         }
         super.updateState(newState)
     }
@@ -109,7 +109,7 @@ final class OneSecStanfordStudy: OneSecStanfordStudyModule, Module, EnvironmentA
         try await healthKit.askForAuthorization(for: .init(read: healthExportConfig.sampleTypes))
         let session = try await healthExportSession()
         let stream = try session.start(retryFailedBatches: true)
-        try localStorage.store(true, for: .didInitiateBulkExport)
+        prefsStore[.didInitiateBulkExport] = true
         if #available(iOS 18, *) {
             healthExportConfig.didStartExport(AnyAsyncSequence(stream.compactMap(\.self)))
         } else {
@@ -139,7 +139,7 @@ final class OneSecStanfordStudy: OneSecStanfordStudyModule, Module, EnvironmentA
             }
         }
         if isCompleted {
-            try? localStorage.store(false, for: .didInitiateBulkExport)
+            prefsStore[.didInitiateBulkExport] = false
             healthExportConfig.didEndExport()
         }
     }
@@ -177,8 +177,21 @@ extension BulkExportSessionIdentifier {
     fileprivate static let oneSecStanfordStudy = Self("edu.stanford.OneSecStanfordStudy")
 }
 
+
 @available(iOS 18, *)
-extension LocalStorageKeys {
-    fileprivate static let oneSecStanfordStudyState = LocalStorageKey<OneSecStanfordStudy.State>("edu.stanford.OneSecStanfordStudy.state")
-    fileprivate static let didInitiateBulkExport = LocalStorageKey<Bool>("edu.stanford.OneSecStanfordStudy.didInitiateBulkExport")
+extension LocalPreferenceKeys.Namespace {
+    fileprivate static let speziOneSec: Self = .custom("edu.stanford.SpeziOneSec")
+}
+
+
+@available(iOS 18, *)
+extension LocalPreferenceKeys {
+    fileprivate static let oneSecStanfordStudyState = LocalPreferenceKey<OneSecStanfordStudy.State>(
+        .init("state", in: .speziOneSec),
+        default: .available
+    )
+    fileprivate static let didInitiateBulkExport = LocalPreferenceKey<Bool>(
+        .init("didInitiateBulkExport", in: .speziOneSec),
+        default: false
+    )
 }
