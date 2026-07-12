@@ -1,0 +1,12 @@
+version = 1
+
+[[annotations]]
+path = [
+    ".gitignore",
+    "Tests/UITests/TestApp/Assets.xcassets/**",
+    "Tests/UITests/TestApp/TestApp.entitlements",
+    "Tests/UITests/TestApp.xctestplan",
+    "Tests/UITests/UITests.xcodeproj/**"
+]
+SPDX-FileCopyrightText = "2026 Stanford University and the project authors (see CONTRIBUTORS.md)"
+SPDX-License-Identifier = "MIT"
