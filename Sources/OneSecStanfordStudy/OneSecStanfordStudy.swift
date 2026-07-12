@@ -177,12 +177,10 @@ extension BulkExportSessionIdentifier {
     fileprivate static let oneSecStanfordStudy = Self("edu.stanford.OneSecStanfordStudy")
 }
 
-
 @available(iOS 18, *)
 extension LocalPreferenceKeys.Namespace {
     fileprivate static let speziOneSec: Self = .custom("edu.stanford.SpeziOneSec")
 }
-
 
 @available(iOS 18, *)
 extension LocalPreferenceKeys {
