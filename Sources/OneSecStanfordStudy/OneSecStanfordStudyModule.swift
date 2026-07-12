@@ -12,7 +12,6 @@ public import HealthKit
 public import SwiftUI
 public import UIKit
 
-
 /// The Stanford study integration for the one sec app.
 ///
 /// ## Topics

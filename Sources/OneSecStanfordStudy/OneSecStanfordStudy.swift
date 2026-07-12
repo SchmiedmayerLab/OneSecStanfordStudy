@@ -16,7 +16,6 @@ import OSLog
 import SwiftUI
 import UIKit
 
-
 /// The OneSecStanfordStudy module.
 @available(iOS 18, *)
 @Observable
