@@ -24,7 +24,7 @@ let package = Package(
         .library(name: "OneSecStanfordStudy", targets: ["OneSecStanfordStudy"])
     ],
     dependencies: [
-        .package(url: "https://github.com/SchmiedmayerLab/Spezi.git", revision: "d55dd3a84fc21fc4f6153cb90f08fbb381b6ec0d", traits: [])
+        .package(url: "https://github.com/SchmiedmayerLab/Spezi.git", .upToNextMinor(from: "0.1.7"), traits: [])
     ],
     targets: [
         .target(
