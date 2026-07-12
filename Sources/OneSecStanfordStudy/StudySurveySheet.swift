@@ -9,7 +9,7 @@
 private import Spezi
 import SwiftUI
 
-@available(iOS 17, *)
+@available(iOS 18, *)
 struct StudySurveySheet: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(OneSecStanfordStudy.self) private var oneSecStanfordStudy
@@ -166,7 +166,7 @@ struct StudySurveySheet: View {
     }
 }
 
-@available(iOS 17, *)
+@available(iOS 18, *)
 extension WebViewProxy {
     func pageContainsField(named variableName: String) async -> Bool {
         let result = try? await callAsyncJavaScript(

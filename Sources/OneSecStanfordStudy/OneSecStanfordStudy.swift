@@ -16,8 +16,9 @@ import OSLog
 import SwiftUI
 import UIKit
 
+
 /// The OneSecStanfordStudy module.
-@available(iOS 17, *)
+@available(iOS 18, *)
 @Observable
 @MainActor
 @objc(OneSecStanfordStudy)
@@ -147,7 +148,7 @@ final class OneSecStanfordStudy: OneSecStanfordStudyModule, Module, EnvironmentA
 
 // MARK: App Delegate and Standard
 
-@available(iOS 17, *)
+@available(iOS 18, *)
 private final class OneSecStanfordStudyAppDelegate: SpeziAppDelegate {
     private let healthExportConfig: HealthExportConfiguration
 
@@ -164,7 +165,7 @@ private final class OneSecStanfordStudyAppDelegate: SpeziAppDelegate {
     }
 }
 
-@available(iOS 17, *)
+@available(iOS 18, *)
 private actor OneSecStanfordStudyStandard: Standard, HealthKitConstraint {
     func handleNewSamples<Sample>(_ addedSamples: some Collection<Sample>, ofType sampleType: SampleType<Sample>) async {}
     func handleDeletedObjects<Sample>(_ deletedObjects: some Collection<HKDeletedObject>, ofType sampleType: SampleType<Sample>) async {}
@@ -172,12 +173,12 @@ private actor OneSecStanfordStudyStandard: Standard, HealthKitConstraint {
 
 // MARK: Utils
 
-@available(iOS 17, *)
+@available(iOS 18, *)
 extension BulkExportSessionIdentifier {
     fileprivate static let oneSecStanfordStudy = Self("edu.stanford.OneSecStanfordStudy")
 }
 
-@available(iOS 17, *)
+@available(iOS 18, *)
 extension LocalStorageKeys {
     fileprivate static let oneSecStanfordStudyState = LocalStorageKey<OneSecStanfordStudy.State>("edu.stanford.OneSecStanfordStudy.state")
     fileprivate static let didInitiateBulkExport = LocalStorageKey<Bool>("edu.stanford.OneSecStanfordStudy.didInitiateBulkExport")

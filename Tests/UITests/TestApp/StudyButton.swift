@@ -9,7 +9,7 @@
 import OneSecStanfordStudy
 import SwiftUI
 
-@available(iOS 17, *)
+@available(iOS 18, *)
 struct StudyButton: View {
     @Environment(OneSecStanfordStudyModule.self) private var oneSecStanfordStudy
     @State private var isShowingSheet = false

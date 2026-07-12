@@ -17,12 +17,13 @@ Stanford study integration module for the one sec app's Digital Interventions Ou
 
 This package combines the original interface and implementation packages into one package that depends on the Spezi monorepo.
 
-The old two-package setup worked around a deployment-target mismatch by dynamically loading the iOS 17 implementation from a separate framework while exposing an iOS 15 interface package. The monorepo-backed version no longer needs that workaround: apps can depend on this single package and link the implementation directly.
+The old two-package setup worked around a deployment-target mismatch by dynamically loading the iOS 18 implementation from a separate framework while exposing an iOS 15 interface package.
+The new single-repo version no longer needs that workaround: apps can depend on this single package and link the implementation directly.
 
 
 ## Installation
 
-Add this package to your app and select the `OneSecStanfordStudy` product. The package can be added to app targets that support iOS 15 or newer. The study integration is active on iOS 17 and newer; on older iOS versions, initialization and the root view modifier are no-ops.
+Add this package to your app and select the `OneSecStanfordStudy` product. The package can be added to app targets that support iOS 15 or newer. The study integration is active on iOS 18 and newer; on older iOS versions, initialization and the root view modifier are no-ops.
 
 This setup temporarily depends on the Spezi monorepo feature branch that adds the monorepo-backed deployment target support:
 
@@ -101,7 +102,7 @@ The runtime is configured directly and `OneSecStanfordStudyModule` is available 
 
 The package includes unit tests in `Tests/OneSecStanfordStudyTests` and a consolidated iOS UI test app in `Tests/UITests`.
 
-Run the UI test app with the `TestApp` scheme in `Tests/UITests/UITests.xcodeproj`. The test app has an iOS 15 deployment target. On iOS 15 and iOS 16, the wrapper launch test validates that initialization and `.oneSecStanfordStudy()` are no-ops. On iOS 17 and newer, the same app validates the active integration and the web view alert/confirm hooks.
+Run the UI test app with the `TestApp` scheme in `Tests/UITests/UITests.xcodeproj`. The test app has an iOS 15 deployment target. On iOS 15 and iOS 16, the wrapper launch test validates that initialization and `.oneSecStanfordStudy()` are no-ops. On iOS 18 and newer, the same app validates the active integration and the web view alert/confirm hooks.
 
 
 ## Contributing

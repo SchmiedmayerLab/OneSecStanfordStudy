@@ -12,6 +12,7 @@ public import HealthKit
 public import SwiftUI
 public import UIKit
 
+
 /// The Stanford study integration for the one sec app.
 ///
 /// ## Topics
@@ -22,7 +23,7 @@ public import UIKit
 ///
 /// ### Instance Methods
 /// - ``makeOneSecStanfordStudySheet()``
-@available(iOS 17, *)
+@available(iOS 18, *)
 @Observable
 @MainActor
 open class OneSecStanfordStudyModule: NSObject {

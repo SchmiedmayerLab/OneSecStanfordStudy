@@ -9,7 +9,7 @@
 @_spi(APISupport) import OneSecStanfordStudy
 import SwiftUI
 
-@available(iOS 17, *)
+@available(iOS 18, *)
 struct ContentView: View {
     @Environment(OneSecStanfordStudyModule.self) private var oneSecStanfordStudy
 

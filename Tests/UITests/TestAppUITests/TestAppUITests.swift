@@ -27,7 +27,7 @@ class TestAppUITests: XCTestCase {
         app.launch()
         XCTAssert(app.wait(for: .runningForeground, timeout: Timeout.appLaunch))
 
-        if #available(iOS 17, *) {
+        if #available(iOS 18, *) {
             XCTAssert(app.staticTexts["integration-status-active"].waitForExistence(timeout: 5))
         } else {
             XCTAssert(app.staticTexts["integration-status-inactive"].waitForExistence(timeout: 5))
@@ -36,8 +36,8 @@ class TestAppUITests: XCTestCase {
 
     @MainActor
     func testWebViewAlertAndConfirmHooks() throws {
-        guard #available(iOS 17, *) else {
-            throw XCTSkip("The study sheet and web view integration are only active on iOS 17 and newer.")
+        guard #available(iOS 18, *) else {
+            throw XCTSkip("The study sheet and web view integration are only active on iOS 18 and newer.")
         }
 
         let app = XCUIApplication()

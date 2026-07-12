@@ -16,14 +16,14 @@ public import UIKit
 /// Once this function has returned, the ``SwiftUICore/View/oneSecStanfordStudy()`` view modifier is
 /// available and should be called on the root level of the app's view hierarchy.
 ///
-/// - Note: If the device is running below iOS 17, this function has no effect.
+/// - Note: If the device is running below iOS 18, this function has no effect.
 @MainActor
 public func initializeOneSecStanfordStudy(
     _ application: UIApplication,
     launchOptions: [UIApplication.LaunchOptionsKey: Any]?, // swiftlint:disable:this discouraged_optional_collection
     healthExportConfig: HealthExportConfiguration
 ) {
-    guard #available(iOS 17, *) else {
+    guard #available(iOS 18, *) else {
         return
     }
     OneSecStanfordStudy.initialize(application: application, launchOptions: launchOptions, healthExportConfig: healthExportConfig)
@@ -33,11 +33,11 @@ extension View {
     /// Injects the study runtime into the SwiftUI view hierarchy.
     ///
     /// - Note: This modifier should be called on the root view of the application.
-    ///     If the device is running below iOS 17, this modifier has no effect.
+    ///     If the device is running below iOS 18, this modifier has no effect.
     @ViewBuilder
     public func oneSecStanfordStudy() -> some View {
-        if #available(iOS 17, *) {
-            AnyView(OneSecStanfordStudy.studyIntegrationViewModifier.applying(to: self))
+        if #available(iOS 18, *) {
+            OneSecStanfordStudy.studyIntegrationViewModifier.applying(to: self)
         } else {
             self
         }

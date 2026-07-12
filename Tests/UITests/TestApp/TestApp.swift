@@ -21,7 +21,7 @@ struct UITestsApp: App {
     }
 
     @ViewBuilder private var rootContent: some View {
-        if #available(iOS 17, *) {
+        if #available(iOS 18, *) {
             ContentView()
         } else {
             VStack(spacing: 12) {

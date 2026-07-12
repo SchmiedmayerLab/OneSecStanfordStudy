@@ -12,7 +12,7 @@ private import SpeziFoundation
 import SpeziHealthKit
 import SpeziHealthKitBulkExport
 
-@available(iOS 17, *)
+@available(iOS 18, *)
 struct HKSampleToFHIRProcessor: BatchProcessor {
     let outputDirectory: URL
 

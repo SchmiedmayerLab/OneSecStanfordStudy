@@ -11,7 +11,7 @@
 import SwiftUI
 private import WebKit
 
-@available(iOS 17, *)
+@available(iOS 18, *)
 struct WebView: View {
     typealias ShouldNavigate = @MainActor (URLRequest) async -> Bool
     typealias DidNavigate = @MainActor (WebViewProxy) async -> Void
@@ -148,7 +148,7 @@ struct WebView: View {
     }
 }
 
-@available(iOS 17, *)
+@available(iOS 18, *)
 @MainActor
 struct WebViewProxy {
     private let wkWebView: WKWebView
@@ -172,7 +172,7 @@ struct WebViewProxy {
 
 // MARK: WebViewImpl
 
-@available(iOS 17, *)
+@available(iOS 18, *)
 private struct WebViewImpl: UIViewRepresentable {
     private let config: WebView.Config
     @Binding private var currentUrl: URL?
@@ -220,7 +220,7 @@ private struct WebViewImpl: UIViewRepresentable {
     }
 }
 
-@available(iOS 17, *)
+@available(iOS 18, *)
 extension WebViewImpl {
     @MainActor
     fileprivate final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate {
