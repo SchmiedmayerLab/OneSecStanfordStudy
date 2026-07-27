@@ -107,10 +107,9 @@ struct OneSecStanfordStudyTests {
         let toJson = {
             try #require(String(bytes: try JSONEncoder().encode($0 as Observation), encoding: .utf8))
         }
-        let containsNameBefore = try toJson(observation).localizedCaseInsensitiveContains("lukas")
         observation.stripDeviceNameMetadata()
         let containsNameAfter = try toJson(observation).localizedCaseInsensitiveContains("lukas")
-        #expect(containsNameBefore || !containsNameAfter, "name not correctly removed!")
+        #expect(!containsNameAfter)
     }
 }
 
