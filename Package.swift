@@ -1,5 +1,4 @@
-// swift-tools-version:6.2
-
+// swift-tools-version:6.3
 //
 // This source file is part of the OneSecStanfordStudy open-source project
 //
@@ -24,7 +23,7 @@ let package = Package(
         .library(name: "OneSecStanfordStudy", targets: ["OneSecStanfordStudy"])
     ],
     dependencies: [
-        .package(url: "https://github.com/SchmiedmayerLab/Spezi.git", .upToNextMinor(from: "0.1.7"), traits: [])
+        .package(url: "https://github.com/SchmiedmayerLab/Spezi.git", exact: "0.1.7")
     ],
     targets: [
         .target(
