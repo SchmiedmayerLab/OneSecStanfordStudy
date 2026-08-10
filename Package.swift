@@ -1,6 +1,6 @@
 // swift-tools-version:6.3
 //
-// This source file is part of the OneSecStanfordStudy open-source project
+// This source file is part of the One Sec Stanford Study open-source project
 //
 // SPDX-FileCopyrightText: 2026 Stanford University and the project authors (see CONTRIBUTORS.md)
 //
