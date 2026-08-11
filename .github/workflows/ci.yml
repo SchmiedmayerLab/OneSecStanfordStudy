@@ -1,5 +1,5 @@
 #
-# This source file is part of the OneSecStanfordStudy open-source project
+# This source file is part of the One Sec Stanford Study open-source project
 #
 # SPDX-FileCopyrightText: 2026 Stanford University and the project authors (see CONTRIBUTORS.md)
 #
@@ -28,7 +28,7 @@ permissions:
 jobs:
   swift-package-ci:
     name: Swift Package CI
-    uses: SchmiedmayerLab/.github/.github/workflows/swift-package-ci.yml@v0.2
+    uses: SchmiedmayerLab/.github/.github/workflows/swift-package-ci.yml@v0.5
     secrets: inherit
 
   all-tests-pass:

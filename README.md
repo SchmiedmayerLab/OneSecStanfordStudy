@@ -1,6 +1,6 @@
 <!--
 
-This source file is part of the OneSecStanfordStudy open-source project
+This source file is part of the One Sec Stanford Study open-source project
 
 SPDX-FileCopyrightText: 2026 Stanford University and the project authors (see CONTRIBUTORS.md)
 
@@ -9,6 +9,10 @@ SPDX-License-Identifier: MIT
 -->
 
 # OneSecStanfordStudy
+
+[![Build and Test](https://github.com/SchmiedmayerLab/OneSecStanfordStudy/actions/workflows/ci.yml/badge.svg)](https://github.com/SchmiedmayerLab/OneSecStanfordStudy/actions/workflows/ci.yml)
+[![REUSE status](https://api.reuse.software/badge/github.com/SchmiedmayerLab/OneSecStanfordStudy)](https://api.reuse.software/info/github.com/SchmiedmayerLab/OneSecStanfordStudy)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE.md)
 
 Stanford study integration module for the one sec app's Digital Interventions Outcome study.
 
@@ -104,20 +108,21 @@ The package includes unit tests in `Tests/OneSecStanfordStudyTests` and a consol
 
 Run the UI test app with the `TestApp` scheme in `Tests/UITests/UITests.xcodeproj`. The test app has an iOS 15 deployment target. On iOS 15 and iOS 16, the wrapper launch test validates that initialization and `.oneSecStanfordStudy()` are no-ops. On iOS 18 and newer, the same app validates the active integration and the web view alert/confirm hooks.
 
-
 ## Contributing
 
-Contributions to this project are welcome. Please make sure to read the [contribution guide](https://github.com/SchmiedmayerLab/Spezi/blob/main/Sources/Spezi/Spezi.docc/Contributing%20Guide.md) and the [Contributor Covenant Code of Conduct](https://github.com/SchmiedmayerLab/.github/blob/main/CODE_OF_CONDUCT.md) first.
-
+Contributions to this project are welcome. Please make sure to read the [contribution guidelines](https://github.com/SchmiedmayerLab/.github/blob/main/CONTRIBUTING.md) and the [contributor covenant code of conduct](https://github.com/SchmiedmayerLab/.github/blob/main/CODE_OF_CONDUCT.md) first. You can find a list of contributors in the [CONTRIBUTORS.md](CONTRIBUTORS.md) file.
 
 ## License
 
-This project is licensed under the MIT License. See [Licenses](LICENSES) for more information.
+This project is licensed under the MIT License. See [LICENSE.md](LICENSE.md) for more information.
 
+## Citation
 
-## Contributors
+If you use this software, please cite it using the metadata in [CITATION.cff](CITATION.cff), which GitHub surfaces through the [*Cite this repository*](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-citation-files) button.
 
-The local [CONTRIBUTORS.md](CONTRIBUTORS.md) file records contributors from the original upstream repositories.
+## Our Research
 
-![Stanford and Stanford Medicine logos](https://raw.githubusercontent.com/SchmiedmayerLab/.github/main/assets/stanford-footer-light.png#gh-light-mode-only)
-![Stanford and Stanford Medicine logos](https://raw.githubusercontent.com/SchmiedmayerLab/.github/main/assets/stanford-footer-dark.png#gh-dark-mode-only)
+For more information, visit the [Schmiedmayer Lab GitHub organization](https://github.com/SchmiedmayerLab).
+
+![Schmiedmayer Lab](https://raw.githubusercontent.com/SchmiedmayerLab/.github/main/assets/footer-light.png#gh-light-mode-only)
+![Schmiedmayer Lab](https://raw.githubusercontent.com/SchmiedmayerLab/.github/main/assets/footer-dark.png#gh-dark-mode-only)
