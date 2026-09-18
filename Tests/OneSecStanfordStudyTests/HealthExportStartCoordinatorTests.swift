@@ -6,8 +6,8 @@
 @testable import OneSecStanfordStudy
 import Testing
 
-@Suite(.timeLimit(.minutes(1))) @MainActor struct HealthExportStartCoordinatorTests {
-    @Test(arguments: [false, true])
+@Suite @MainActor struct HealthExportStartCoordinatorTests {
+    @Test(.timeLimit(.minutes(1)), arguments: [false, true]) @available(iOS 16, *)
     func resetWaitsForOrdinaryStartupAndCoalescesLaterRequests(firstStartFails: Bool) async throws {
         let coordinator = HealthExportStartCoordinator()
         let (started, startedContinuation) = AsyncStream.makeStream(of: Bool.self)
@@ -57,7 +57,7 @@ import Testing
         #expect(calls == [false, true])
     }
 
-    @Test
+    @Test(.timeLimit(.minutes(1))) @available(iOS 16, *)
     func startupFailureAllowsAnotherAttempt() async throws {
         let coordinator = HealthExportStartCoordinator()
         let failed = coordinator.start(forceSessionReset: true) { _ in throw StartupError.failed }

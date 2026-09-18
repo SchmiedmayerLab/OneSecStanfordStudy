@@ -3,6 +3,7 @@ version = 1
 [[annotations]]
 path = [
     ".gitignore",
+    ".github/api-breakages.txt",
     "Tests/UITests/TestApp/Assets.xcassets/**",
     "Tests/UITests/TestApp/TestApp.entitlements",
     "Tests/UITests/TestApp.xctestplan",

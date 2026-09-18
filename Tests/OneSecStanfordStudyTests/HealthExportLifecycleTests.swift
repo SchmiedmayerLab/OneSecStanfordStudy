@@ -12,8 +12,8 @@ import Observation
 @testable import OneSecStanfordStudy
 import Testing
 
-@Suite(.timeLimit(.minutes(1))) @MainActor struct HealthExportLifecycleTests {
-    @Test @available(iOS 18, *)
+@Suite @MainActor struct HealthExportLifecycleTests {
+    @Test(.timeLimit(.minutes(1))) @available(iOS 18, *)
     func streamAndResultShareAttemptID() async throws {
         let recorder = CallbackRecorder()
         let attempt = HealthExportAttempt(configuration: recorder.configuration)
@@ -34,7 +34,7 @@ import Testing
         #expect(received == [file])
     }
 
-    @Test(arguments: [BulkExportSessionState.completed, .paused, .terminated])
+    @Test(.timeLimit(.minutes(1)), arguments: [BulkExportSessionState.completed, .paused, .terminated])
     @available(iOS 18, *)
     func reportsTerminalSessionState(_ terminalState: BulkExportSessionState) async throws {
         let recorder = CallbackRecorder()
@@ -63,7 +63,7 @@ import Testing
         #expect(recorder.results.count == 1)
     }
 
-    @Test @available(iOS 18, *)
+    @Test(.timeLimit(.minutes(1))) @available(iOS 18, *)
     func checkpointFailureOverridesSuccessfulBatchCounts() async throws {
         let recorder = CallbackRecorder()
         let session = StubExportSession()
@@ -82,7 +82,7 @@ import Testing
         #expect((error as? CocoaError)?.code == .fileWriteOutOfSpace)
     }
 
-    @Test @available(iOS 18, *)
+    @Test(.timeLimit(.minutes(1))) @available(iOS 18, *)
     func resetSuppressesQueuedCompletionAndRetryGetsNewID() async throws {
         let recorder = CallbackRecorder()
         let session = StubExportSession()
@@ -111,7 +111,7 @@ import Testing
         #expect(recorder.results.count == 2)
     }
 
-    @Test @available(iOS 18, *)
+    @Test(.timeLimit(.minutes(1))) @available(iOS 18, *)
     func startupFailureReportsErrorWithoutOpeningStream() async throws {
         let recorder = CallbackRecorder()
         let config = HealthExportConfiguration(
@@ -134,7 +134,7 @@ import Testing
         #expect(error is HealthExportConfiguration.ValidationError)
     }
 
-    @Test(arguments: [false, true]) @available(iOS 18, *)
+    @Test(.timeLimit(.minutes(1)), arguments: [false, true]) @available(iOS 18, *)
     func resetFailureRetainsActualSessionOutcome(terminatedBeforeFailure: Bool) async throws {
         let recorder = CallbackRecorder()
         let session = StubExportSession()
@@ -167,7 +167,7 @@ import Testing
         #expect(recorder.results.count == 1)
     }
 
-    @Test @available(iOS 18, *)
+    @Test(.timeLimit(.minutes(1))) @available(iOS 18, *)
     func successfulResetDefersTerminationCallback() async throws {
         let recorder = CallbackRecorder()
         let session = StubExportSession()
@@ -187,7 +187,7 @@ import Testing
         #expect(recorder.results.count == 1)
     }
 
-    @Test(arguments: ["complete", "failed", "pending", "unaccounted", "empty", "checkpoint", "running"])
+    @Test(.timeLimit(.minutes(1)), arguments: ["complete", "failed", "pending", "unaccounted", "empty", "checkpoint", "running"])
     @available(iOS 18, *)
     func onlyFullyCompletedSessionClearsRestorationFlag(scenario: String) throws {
         let suiteName = "HealthExportLifecycleTests.\(UUID().uuidString)"
