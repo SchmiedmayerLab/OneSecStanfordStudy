@@ -16,7 +16,19 @@ import OSLog
 public import SwiftUI
 import UIKit
 
-/// The study interface, available through the SwiftUI environment after initialization.
+/// The Stanford study integration for the one sec app.
+///
+/// Available through the SwiftUI environment after initialization.
+///
+/// ## Topics
+///
+/// ### Instance Properties
+/// - ``state``
+/// - ``surveyUrl``
+///
+/// ### Instance Methods
+/// - ``makeOneSecStanfordStudySheet()``
+/// - ``triggerHealthExport(forceSessionReset:)``
 @available(iOS 18, *)
 @Observable
 @MainActor
@@ -37,7 +49,9 @@ public final class OneSecStanfordStudyModule: Module, EnvironmentAccessible {
         case completed
     }
 
-    /// The enrollment survey URL, including the participant's REDCap token.
+    /// The URL of the survey the user should fill out to enroll in the study.
+    ///
+    /// The host app constructs this URL from the survey and the participant's token obtained from REDCap.
     public var surveyUrl: URL?
 
     /// The current survey state.

@@ -12,6 +12,10 @@ public import HealthKit
 public struct HealthExportConfiguration: Sendable {
     /// Called once an attempt opens its file stream; URLs arrive as nonempty batches succeed.
     /// Consume the stream in an app-owned task. This callback does not wait for any files or uploads.
+    ///
+    /// - Parameters:
+    ///   - attemptID: Identifies this attempt and its final result.
+    ///   - files: An `AsyncSequence` yielding the URLs of local files created from individual export batches.
     public typealias DidStartLocalExport = @Sendable @MainActor (_ attemptID: UUID, _ files: AnyAsyncSequence<URL, Never>) -> Void
 
     /// Called once per attempt with its terminal local-processing outcome, including checkpoint failures.
@@ -24,7 +28,9 @@ public struct HealthExportConfiguration: Sendable {
     public let sampleTypes: Set<HKObjectType>
     /// The time range for which health samples should be exported.
     public let timeRange: Range<Date>
+    /// Callback invoked when an attempt opens its local file stream.
     public let didStartLocalExport: DidStartLocalExport
+    /// Callback invoked with the attempt's final local-processing outcome.
     public let didFinishLocalExport: DidFinishLocalExport
 
     /// Create a configuration with handlers for file delivery and local processing outcomes.

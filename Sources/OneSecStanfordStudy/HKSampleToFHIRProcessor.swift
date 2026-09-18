@@ -52,19 +52,12 @@ struct HKSampleToFHIRProcessor: BatchProcessor {
 extension ModelsR4::DomainResource {
     /// Removes the `HKSourceRevision.source.name` metadata field from the resource, if it exists.
     mutating func stripDeviceNameMetadata() {
-        guard var extensions = self.extension else { return }
-        let revisionURLs = FHIRExtensionURL.sourceRevision.allURLs
-        let sourceURLs = FHIRExtensionURL.sourceRevision.appending(component: "source").allURLs
-        let nameURLs = FHIRExtensionURL.sourceRevision.appending(components: ["source", "name"]).allURLs
-        for revisionIndex in extensions.indices where extensions[revisionIndex].url.value.map({ revisionURLs.contains($0.url) }) == true {
-            guard var sources = extensions[revisionIndex].extension else { continue }
-            for sourceIndex in sources.indices where sources[sourceIndex].url.value.map({ sourceURLs.contains($0.url) }) == true {
-                sources[sourceIndex].extension?.removeAll { field in
-                    field.url.value.map { nameURLs.contains($0.url) } ?? false
-                }
-            }
-            extensions[revisionIndex].extension = sources
+        let revisionURL = FHIRExtensionURL.sourceRevision
+        let sourceURL = revisionURL.appending(component: "source")
+        guard let revision = self.extension?.firstIndex(where: { $0.url == revisionURL.r4 }),
+              let source = self.extension?[revision].extension?.firstIndex(where: { $0.url == sourceURL.r4 }) else {
+            return
         }
-        self.extension = extensions
+        self.extension?[revision].extension?[source].removeAllExtensions(withUrl: sourceURL.appending(component: "name").r4)
     }
 }

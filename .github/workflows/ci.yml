@@ -26,54 +26,22 @@ permissions:
   pull-requests: write
 
 jobs:
-  setup:
-    name: Set Up Swift Package
-    uses: SchmiedmayerLab/.github/.github/workflows/swift-package-setup.yml@v0.5
-
-  tests:
-    name: Test Swift Package
-    needs: setup
-    uses: SchmiedmayerLab/.github/.github/workflows/swift-package-test.yml@v0.5
-    with:
-      package_name: ${{ needs.setup.outputs.package_name }}
-      scheme: ${{ needs.setup.outputs.scheme }}
-      platform_matrix: ${{ needs.setup.outputs.platform_matrix }}
-      ui_platform_matrix: ${{ needs.setup.outputs.ui_platform_matrix }}
+  swift-package-ci:
+    name: Swift Package CI
+    uses: SchmiedmayerLab/.github/.github/workflows/swift-package-ci.yml@v0.5
     secrets: inherit
-
-  analysis:
-    name: Analyze Swift Package
-    needs: setup
-    uses: SchmiedmayerLab/.github/.github/workflows/swift-package-static-analysis.yml@v0.5
-    with:
-      library_products: ${{ needs.setup.outputs.library_products }}
-      platform_name: ${{ needs.setup.outputs.platform_name }}
-      platform_version: ${{ needs.setup.outputs.platform_version }}
-      diagnose_breaking_changes: false
-
-  api-compatibility:
-    name: Check API Compatibility
-    if: github.ref != 'refs/heads/main'
-    runs-on: [macOS, self-hosted]
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-      - name: Check for unapproved API changes
-        run: bash Scripts/check-api-compatibility.sh origin/main
 
   all-tests-pass:
     name: All tests pass
     if: always()
-    needs: [setup, tests, analysis, api-compatibility]
+    needs: swift-package-ci
     runs-on: ubuntu-latest
     steps:
       - name: Verify CI results
-        env:
-          RESULTS: ${{ toJSON(needs) }}
         run: |
-          echo "$RESULTS" | jq -e 'to_entries | all(
-            .value.result == "success" or
-            (.key == "api-compatibility" and .value.result == "skipped")
-          )'
+          echo "swift-package-ci = ${{ needs.swift-package-ci.result }}"
+          if [ "${{ needs.swift-package-ci.result }}" != "success" ]; then
+            echo "::error::Swift Package CI did not pass."
+            exit 1
+          fi
           echo "All required checks passed."

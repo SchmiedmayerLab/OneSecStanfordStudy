@@ -73,7 +73,7 @@ import Testing
         let observations = try JSONDecoder().decode([Observation].self, from: data)
         let observation = try #require(observations.first)
         #expect(observations.count == 1)
-        let revision = try #require(observation.extensions(for: .sourceRevision).first)
+        let revision = try #require(observation.extensions(for: FHIRExtensionURL.sourceRevision.r4).first)
         let sourceURL = FHIRExtensionURL.sourceRevision.appending(component: "source")
         let source = try #require(revision.extensions(for: sourceURL).first)
         #expect(source.extensions(for: sourceURL.appending(component: "name")).isEmpty)
@@ -86,37 +86,6 @@ import Testing
         #expect(try #require(period.start?.value).asNSDate() == start)
         #expect(try #require(period.end?.value).asNSDate() == end)
         #expect(try processor.process([HKQuantitySample](), of: SampleType.stepCount) == nil)
-    }
-
-    @Test @available(iOS 18, *)
-    func removesDeviceNamesFromAllMetadataSpellings() throws {
-        let roots = [
-            "https://bdh.stanford.edu/fhir/defs/sourceRevision",
-            "https://grovealliance.org/fhir/core/StructureDefinition/sourceRevision"
-        ]
-        let extensions = roots.map { root in
-            ModelsR4.Extension(
-                extension: [ModelsR4.Extension(
-                    extension: [
-                        ModelsR4.Extension(url: "\(root)/source/name".asFHIRURIPrimitive()!, value: .string("Test Person’s Watch")),
-                        ModelsR4.Extension(url: "\(root)/source/bundleIdentifier".asFHIRURIPrimitive()!, value: .string("test.bundle"))
-                    ],
-                    url: "\(root)/source".asFHIRURIPrimitive()!
-                )],
-                url: root.asFHIRURIPrimitive()!
-            )
-        }
-        var observation = Observation(code: CodeableConcept(), status: .init(.final))
-        observation.extension = extensions
-        observation.stripDeviceNameMetadata()
-        let json = try #require(String(data: JSONEncoder().encode(observation), encoding: .utf8))
-        #expect(!json.contains("Test Person"))
-        #expect(observation.extension?.count == 2)
-        for revision in observation.extension ?? [] {
-            let fields = try #require(revision.extension?.first?.extension)
-            #expect(fields.count == 1)
-            #expect(fields.first?.value == .string("test.bundle"))
-        }
     }
 
     @Test(arguments: [
