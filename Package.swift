@@ -45,7 +45,9 @@ let package = Package(
         .testTarget(
             name: "OneSecStanfordStudyTests",
             dependencies: [
-                .target(name: "OneSecStanfordStudy")
+                .target(name: "OneSecStanfordStudy"),
+                .product(name: "GroveTesting", package: "Grove"),
+                .product(name: "GroveLocalStorage", package: "Grove")
             ],
             swiftSettings: swiftSettings
         )
