@@ -9,9 +9,9 @@
 // swiftlint:disable file_types_order
 
 @_spi(APISupport) import Grove
-private import GroveFoundation
+import GroveFoundation
 private import GroveHealthKit
-private import GroveHealthKitBulkExport
+import GroveHealthKitBulkExport
 import OSLog
 import SwiftUI
 import UIKit
@@ -51,15 +51,16 @@ final class OneSecStanfordStudy: OneSecStanfordStudyModule, Module, EnvironmentA
 
     nonisolated private let healthExportConfig: HealthExportConfiguration
     nonisolated(unsafe) private let fileManager = FileManager.default
-    private let prefsStore = LocalPreferencesStore.standard
-    @ObservationIgnored private var exportStartTask: Task<Void, any Error>?
-    /// Identity also rejects stale completion callbacks; `exportStartTask` coalesces concurrent starts.
+    private let prefsStore: LocalPreferencesStore
+    @ObservationIgnored private let exportStartCoordinator = HealthExportStartCoordinator()
+    /// Identity rejects stale completion callbacks from previous attempts.
     @ObservationIgnored private var activeExportAttempt: HealthExportAttempt?
 
 
     /// Creates a new instance of the `OneSecStanfordStudy` module
-    nonisolated init(healthExportConfig: HealthExportConfiguration) {
+    nonisolated init(healthExportConfig: HealthExportConfiguration, preferences: LocalPreferencesStore = .standard) {
         self.healthExportConfig = healthExportConfig
+        self.prefsStore = preferences
     }
 
     override static func initialize(
@@ -101,16 +102,9 @@ final class OneSecStanfordStudy: OneSecStanfordStudyModule, Module, EnvironmentA
     // MARK: HealthKit Data Collection
 
     override func triggerHealthExport(forceSessionReset: Bool) async throws {
-        if let exportStartTask {
-            // Coalesce page navigation and launch restoration across suspension points.
-            try await exportStartTask.value
-            return
-        }
-        let task = Task { @MainActor in
+        let task = exportStartCoordinator.start(forceSessionReset: forceSessionReset) { forceSessionReset in
             try await self.startHealthExport(forceSessionReset: forceSessionReset)
         }
-        exportStartTask = task
-        defer { exportStartTask = nil }
         try await task.value
     }
 
@@ -120,10 +114,17 @@ final class OneSecStanfordStudy: OneSecStanfordStudyModule, Module, EnvironmentA
             try Task.checkCancellation()
             try healthExportConfig.validate()
             if forceSessionReset {
-                let previousAttempt = activeExportAttempt
-                activeExportAttempt = nil
-                previousAttempt?.finish(.cancelled(.sessionReset))
-                try await bulkExporter.deleteSessionRestorationInfo(for: .oneSecStanfordStudy)
+                let reset: @MainActor () async throws -> Void = {
+                    try await self.bulkExporter.deleteSessionRestorationInfo(for: .oneSecStanfordStudy)
+                }
+                if let previousAttempt = activeExportAttempt {
+                    try await previousAttempt.resetSession(reset)
+                    if activeExportAttempt === previousAttempt {
+                        activeExportAttempt = nil
+                    }
+                } else {
+                    try await reset()
+                }
             }
             if !fileManager.itemExists(at: healthExportConfig.destination) {
                 try fileManager.createDirectory(at: healthExportConfig.destination, withIntermediateDirectories: true)
@@ -133,7 +134,7 @@ final class OneSecStanfordStudy: OneSecStanfordStudyModule, Module, EnvironmentA
             let session = try await healthExportSession()
             try Task.checkCancellation()
             guard session.state != .running else { return }
-            if session.state == .completed && session.failedBatches.isEmpty && session.pendingBatches.isEmpty {
+            if clearRestorationFlagIfCompleted(session) {
                 return
             }
             // A retry can arrive before the previous attempt's queued completion callback.
@@ -153,6 +154,16 @@ final class OneSecStanfordStudy: OneSecStanfordStudyModule, Module, EnvironmentA
             }
             throw error
         }
+    }
+
+    func clearRestorationFlagIfCompleted(_ session: some BulkExportSession) -> Bool {
+        guard session.state == .completed, session.persistenceError == nil,
+              session.numTotalBatches > 0, session.completedBatches.count == session.numTotalBatches,
+              session.failedBatches.isEmpty, session.pendingBatches.isEmpty else {
+            return false
+        }
+        prefsStore[.didInitiateBulkExport] = false
+        return true
     }
 
     /// Obtains the bulk health export session.

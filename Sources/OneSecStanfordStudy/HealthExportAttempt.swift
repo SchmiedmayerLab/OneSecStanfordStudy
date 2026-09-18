@@ -14,6 +14,8 @@ final class HealthExportAttempt {
     private let configuration: HealthExportConfiguration
     private var didStart = false
     private(set) var didFinish = false
+    private var isResetting = false
+    private var deferredCompletion: (@MainActor () -> Void)?
 
     init(configuration: HealthExportConfiguration) {
         self.configuration = configuration
@@ -31,6 +33,10 @@ final class HealthExportAttempt {
         willFinish: @escaping @MainActor (HealthExportResult.Outcome) -> Void
     ) {
         guard !didFinish else { return }
+        if isResetting {
+            deferredCompletion = { self.trackCompletion(of: session, willFinish: willFinish) }
+            return
+        }
         let state = session.state
         if state == .running {
             withObservationTracking {
@@ -60,6 +66,19 @@ final class HealthExportAttempt {
         }
         willFinish(outcome)
         finish(outcome)
+    }
+
+    func resetSession(_ reset: @MainActor () async throws -> Void) async throws {
+        isResetting = true
+        defer {
+            isResetting = false
+            let completion = deferredCompletion
+            deferredCompletion = nil
+            completion?()
+        }
+        // Deletion may terminate the session before throwing a storage error.
+        try await reset()
+        finish(.cancelled(.sessionReset))
     }
 
     func finish(_ outcome: HealthExportResult.Outcome) {
