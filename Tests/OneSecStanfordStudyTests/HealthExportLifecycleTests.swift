@@ -34,7 +34,7 @@ import Testing
         #expect(received == [file])
     }
 
-    @Test(.timeLimit(.minutes(1)), arguments: [BulkExportSessionState.completed, .paused, .terminated])
+    @Test(.timeLimit(.minutes(1)), arguments: [BulkExportSessionState.completed, .paused(reason: .failedBatches), .terminated])
     @available(iOS 18, *)
     func reportsTerminalSessionState(_ terminalState: BulkExportSessionState) async throws {
         let recorder = CallbackRecorder()
@@ -70,8 +70,7 @@ import Testing
         let attempt = HealthExportAttempt(configuration: recorder.configuration)
         attempt.trackCompletion(of: session) { _ in }
         session.completedBatches = [Self.batch]
-        session.persistenceError = CocoaError(.fileWriteOutOfSpace)
-        session.state = .paused
+        session.state = .paused(reason: .failure(.checkpointWriteFailed(CheckpointWriteFailure(CocoaError(.fileWriteOutOfSpace)))))
         var results = recorder.resultStream.makeAsyncIterator()
         let result = try #require(await results.next())
         guard case .failedToPersist(let summary, let error) = result.outcome else {
@@ -79,7 +78,24 @@ import Testing
             return
         }
         #expect(summary == Self.success)
-        #expect((error as? CocoaError)?.code == .fileWriteOutOfSpace)
+        #expect(error.category == .insufficientSpace)
+        #expect(error.domain == NSCocoaErrorDomain)
+        #expect(error.code == CocoaError.fileWriteOutOfSpace.rawValue)
+    }
+
+    @Test(.timeLimit(.minutes(1))) @available(iOS 18, *)
+    func requestedPauseDoesNotReportSuccessFromBatchCountsAlone() throws {
+        let recorder = CallbackRecorder()
+        let session = StubExportSession()
+        session.completedBatches = [Self.batch]
+        session.state = .paused(reason: .requested)
+        let attempt = HealthExportAttempt(configuration: recorder.configuration)
+        attempt.trackCompletion(of: session) { _ in }
+        guard case .incomplete(let summary) = try #require(recorder.results.first).outcome else {
+            Issue.record("A paused session must not report success")
+            return
+        }
+        #expect(summary == Self.success)
     }
 
     @Test(.timeLimit(.minutes(1))) @available(iOS 18, *)
@@ -89,7 +105,7 @@ import Testing
         let oldAttempt = HealthExportAttempt(configuration: recorder.configuration)
         oldAttempt.start(files: AnyAsyncSequence(AsyncStream<URL> { $0.finish() }))
         oldAttempt.trackCompletion(of: session) { _ in Issue.record("Stale completion") }
-        session.state = .paused // Queues a completion task on MainActor.
+        session.state = .paused(reason: .requested) // Queues a completion task on MainActor.
         oldAttempt.finish(.cancelled(.sessionReset))
         session.state = .running
         let retry = HealthExportAttempt(configuration: recorder.configuration)
@@ -120,9 +136,9 @@ import Testing
             didStartLocalExport: recorder.configuration.didStartLocalExport,
             didFinishLocalExport: recorder.configuration.didFinishLocalExport
         )
-        let module = OneSecStanfordStudy(healthExportConfig: config)
+        let module = OneSecStanfordStudyModule(healthExportConfig: config)
         await #expect(throws: HealthExportConfiguration.ValidationError.self) {
-            try await module.triggerHealthExport(forceSessionReset: false)
+            try await module.triggerHealthExport()
         }
         #expect(recorder.startedIDs.isEmpty)
         #expect(recorder.results.count == 1)
@@ -198,7 +214,7 @@ import Testing
             .init("didInitiateBulkExport", in: .custom("edu.stanford.SpeziOneSec")), default: false
         )
         preferences[key] = true
-        let module = OneSecStanfordStudy(healthExportConfig: CallbackRecorder().configuration, preferences: preferences)
+        let module = OneSecStanfordStudyModule(healthExportConfig: CallbackRecorder().configuration, preferences: preferences)
         let session = StubExportSession()
         session.state = .completed
         session.completedBatches = [Self.batch]
@@ -209,7 +225,8 @@ import Testing
         case "empty":
             session.numTotalBatches = 0
             session.completedBatches = []
-        case "checkpoint": session.persistenceError = CocoaError(.fileWriteOutOfSpace)
+        case "checkpoint":
+            session.state = .paused(reason: .failure(.checkpointWriteFailed(CheckpointWriteFailure(CocoaError(.fileWriteOutOfSpace)))))
         case "running": session.state = .running
         default: break
         }
@@ -257,7 +274,6 @@ private final class StubExportSession: BulkExportSession {
     typealias Processor = HKSampleToFHIRProcessor
     let sessionId = BulkExportSessionIdentifier("test")
     var state: BulkExportSessionState = .running
-    var persistenceError: (any Error)?
     var pendingBatches: [ExportBatch] = []
     var completedBatches: [ExportBatch] = []
     var failedBatches: [ExportBatch] = []
@@ -269,6 +285,6 @@ private final class StubExportSession: BulkExportSession {
         return AsyncStream { $0.finish() }
     }
 
-    func pause() async { state = .paused }
+    func pause() async { state = .paused(reason: .requested) }
     func _terminate() async { state = .terminated } // swiftlint:disable:this identifier_name
 }

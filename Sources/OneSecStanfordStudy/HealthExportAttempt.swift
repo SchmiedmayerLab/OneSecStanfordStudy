@@ -58,10 +58,10 @@ final class HealthExportAttempt {
                 failedBatches: session.failedBatches.count,
                 pendingBatches: session.pendingBatches.count
             )
-            if let error = session.persistenceError {
+            if case .paused(reason: .failure(.checkpointWriteFailed(let error))) = state {
                 outcome = .failedToPersist(summary, error)
             } else {
-                outcome = summary.allBatchesSucceeded ? .succeeded(summary) : .incomplete(summary)
+                outcome = state == .completed && summary.allBatchesSucceeded ? .succeeded(summary) : .incomplete(summary)
             }
         }
         willFinish(outcome)

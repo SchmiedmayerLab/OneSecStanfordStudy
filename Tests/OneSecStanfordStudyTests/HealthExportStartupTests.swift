@@ -39,7 +39,7 @@ import Testing
             didStartLocalExport: { _, _ in starts += 1 },
             didFinishLocalExport: { results.append($0) }
         )
-        let module = OneSecStanfordStudy(healthExportConfig: config, preferences: LocalPreferencesStore(defaults: defaults))
+        let module = OneSecStanfordStudyModule(healthExportConfig: config, preferences: LocalPreferencesStore(defaults: defaults))
         withDependencyResolution(standard: ExportTestStandard()) {
             storage
             HealthKit()

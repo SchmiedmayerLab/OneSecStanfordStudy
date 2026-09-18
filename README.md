@@ -19,15 +19,13 @@ Stanford study integration module for the one sec app's Digital Interventions Ou
 
 ## Overview
 
-This package combines the original interface and implementation packages into one package that depends on the Grove monorepo.
-
-The old two-package setup worked around a deployment-target mismatch by dynamically loading the iOS 18 implementation from a separate framework while exposing an iOS 15 interface package.
-The new single-repo version no longer needs that workaround: apps can depend on this single package and link the implementation directly.
-
+This package links the Grove-based study implementation directly into the host app.
+It supports iOS 15 and newer; study features run on iOS 18 and newer.
 
 ## Installation
 
-Add this package to your app and select the `OneSecStanfordStudy` product. The package can be added to app targets that support iOS 15 or newer. The study integration is active on iOS 18 and newer; on older iOS versions, initialization and the root view modifier are no-ops.
+Add the `OneSecStanfordStudy` product to your app.
+On iOS 15–17, initialization and the root view modifier are no-ops.
 
 This package currently depends on Grove's export-fix branch:
 
@@ -79,19 +77,19 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
                 didFinishLocalExport: { result in
                     switch result.outcome {
                     case .succeeded(let summary):
-                        // Record successful local processing for result.attemptID.
+                        // Record success for result.attemptID.
                         break
                     case .incomplete(let summary):
                         // Record batch counts and retain retry state.
                         break
                     case .failedToPersist(let summary, let error):
-                        // Retain files and retry state; the checkpoint was not confirmed.
+                        // Keep files and address error.category before retrying.
                         break
                     case .cancelled(let reason):
-                        // Close this attempt; retain files already queued for upload.
+                        // Keep files already queued for upload.
                         break
                     case .failedToStart(let error):
-                        // Record the startup error; this attempt has no file stream.
+                        // Record the error; no file stream was opened.
                         break
                     }
                 }
@@ -104,40 +102,58 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
 
 ### Export callbacks
 
-The package queries HealthKit, converts samples and writes local batch files.
-The calling app owns durable upload jobs, retries and server reconciliation.
+The package queries HealthKit, converts samples and writes batch files.
+The host app handles uploads, upload retries and server receipts.
 
-| Callback | Payload and timing | Caller responsibility |
-|---|---|---|
-| `didStartLocalExport(attemptID, files)` | Called when an attempt opens its stream. URLs arrive as nonempty batches succeed; the stream may be empty. | Start one app-owned consumer task. Persist each file and its upload job with the attempt ID. |
-| `didFinishLocalExport(result)` | One terminal outcome for that attempt, with the same `attemptID`. Startup failure can occur without a start callback. | Record the outcome and batch counts; keep upload status separate. |
+| Callback | Contract |
+|---|---|
+| `didStartLocalExport(attemptID, files)` | Opens the attempt's stream. Consume it in an app-owned task and persist an upload job for each file. The stream may be empty. |
+| `didFinishLocalExport(result)` | Reports one final outcome with the same attempt ID. It can arrive before the stream is drained or uploads finish. Startup failure has no preceding start callback. |
 
-`result.outcome` is one of:
+Both callbacks run synchronously on `MainActor`; keep file and network work in the consumer task.
 
 | Outcome | Meaning |
 |---|---|
-| `.succeeded(summary)` | Every configured batch succeeded, including empty queries, and the final checkpoint was stored. This does not establish that every sample type contained data. |
-| `.incomplete(summary)` | Processing stopped with failed, pending or unaccounted-for batches. Launch restoration remains enabled for retry. |
-| `.failedToPersist(summary, error)` | The final checkpoint write failed. Batch counts can be complete while restoration state is not confirmed. Retry remains enabled; retain emitted files. |
-| `.cancelled(reason)` | Reset, session termination or startup-task cancellation ended the attempt. Previously emitted files remain the caller's responsibility. |
-| `.failedToStart(error)` | Validation, authorization, session preparation or starting failed before a stream was opened. The error is also thrown to the initiating caller. |
+| `.succeeded(summary)` | All batches succeeded and the final checkpoint was stored. Empty queries count as successful. |
+| `.incomplete(summary)` | The session paused or batch counts are incomplete. Retry remains enabled. |
+| `.failedToPersist(summary, error)` | The checkpoint write failed, even if all batches succeeded. `CheckpointWriteFailure` provides a recovery category, domain, code and message. |
+| `.cancelled(reason)` | Reset, termination or startup-task cancellation ended the attempt. Keep files already queued for upload. |
+| `.failedToStart(error)` | Startup failed before opening a stream. The error is also thrown to the caller. |
 
-`HealthExportBatchSummary` counts all batches in the session, including earlier attempts: `totalBatches`, successful `completedBatches`, `failedBatches` and remaining `pendingBatches` (excluding failures).
-A successful empty query emits no file; batch counts are not file or sample counts.
-On resume, only newly processed files are emitted, so reconcile uploads against the persisted manifest across attempts.
+`HealthExportBatchSummary` counts the whole session, including earlier attempts: `totalBatches`, `completedBatches`, `failedBatches` and `pendingBatches` (excluding failures).
+Empty queries emit no file; batch counts do not measure files, samples or upload delivery.
 
-Both callbacks run synchronously on `MainActor`; keep them short and delegate file/network work to an app-owned coordinator.
-The result can arrive before the consumer drains the stream or finishes uploads.
-If the host records `didEndSequence`, emit it after every yielded file has a durable upload job.
-If it records `didFinishUploading`, emit it after reconciling server receipts with the file manifest.
-Complete delivery requires successful local processing, a drained stream and acknowledgment of all expected files.
-Survey completion is separate.
+Record `didEndSequence` after every yielded file has a durable upload job, and `didFinishUploading` after all expected files have server receipts.
+Survey completion is independent of export and upload completion.
+On resume, the stream emits only newly processed files; reconcile uploads across attempts using the host's saved file manifest.
 
-Each retry or reset creates a new attempt ID; it is not a participant ID or a persistent export-session ID.
-The host must retain the association with the participant and export manifest across launches.
-Duplicate starts of a running session and already-completed sessions do not create new callbacks or replay files.
-Callbacks are in-process notifications: app termination can prevent a terminal callback, and results are not replayed after relaunch.
-A reset reports cancellation of the old attempt before preparing the replacement; its stream may still be draining.
+Each started retry or reset gets a new attempt ID. Associate it with the participant and export manifest.
+Starting an already-running or completed session does not produce new callbacks or replay files.
+Callbacks are not persisted: app termination may prevent the final callback, and results are not replayed after launch.
+A successful reset reports cancellation before preparing its replacement; the old stream may still be draining.
+
+### Recovering an export
+
+For `.failedToPersist`, retain emitted files and upload jobs, then address `error.category`:
+
+| Category | Action before retrying |
+|---|---|
+| `.insufficientSpace` | Free device storage. |
+| `.temporarilyUnavailable` | Wait for storage to become available. |
+| `.accessDenied` | Check permissions and protected-data availability; the error alone does not identify the cause. |
+| `.invalidDestination` | Correct the storage location or configuration. |
+| `.unknown` | Inspect the error domain, code and message. |
+
+Resume with `triggerHealthExport()`, as the export screen and launch restoration do.
+Call this public method on the environment-injected `OneSecStanfordStudyModule`, on `MainActor` on iOS 18 or newer.
+Retry after a user action or storage availability change, not repeatedly from the failure callback.
+
+Session progress is checkpointed for restoration across launches.
+After a checkpoint failure, the live session retains unsaved progress; retrying it preserves completed batches and may emit no new files.
+If the app terminates first, restoration may repeat batches whose completion was not saved.
+Generated files and upload jobs are separate from that checkpoint and must be retained by the host.
+Deduplicate HealthKit samples by participant ID and sample UUID.
+Use `forceSessionReset: true` only for an intentional restart.
 
 ### Sample types
 
@@ -164,7 +180,7 @@ WindowGroup {
 }
 ```
 
-The runtime is configured directly and `OneSecStanfordStudyModule` is available through SwiftUI environment injection:
+On iOS 18 and newer, access study state, the survey sheet and export retries through `OneSecStanfordStudyModule`:
 
 ```swift
 @Environment(OneSecStanfordStudyModule.self) private var oneSec

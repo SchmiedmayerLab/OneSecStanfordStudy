@@ -26,7 +26,7 @@ public func initializeOneSecStanfordStudy(
     guard #available(iOS 18, *) else {
         return
     }
-    OneSecStanfordStudy.initialize(application: application, launchOptions: launchOptions, healthExportConfig: healthExportConfig)
+    OneSecStanfordStudyModule.initialize(application: application, launchOptions: launchOptions, healthExportConfig: healthExportConfig)
 }
 
 extension View {
@@ -37,15 +37,9 @@ extension View {
     @ViewBuilder
     public func oneSecStanfordStudy() -> some View {
         if #available(iOS 18, *) {
-            OneSecStanfordStudy.studyIntegrationViewModifier.applying(to: self)
+            OneSecStanfordStudyModule.integrate(self)
         } else {
             self
         }
-    }
-}
-
-extension ViewModifier {
-    fileprivate func applying(to view: some View) -> some View {
-        view.modifier(self)
     }
 }

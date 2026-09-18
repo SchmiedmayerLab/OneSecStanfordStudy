@@ -1,5 +1,0 @@
-API breakage: typealias HealthExportConfiguration.DidStartExport has been removed
-API breakage: typealias HealthExportConfiguration.DidEndExport has been removed
-API breakage: var HealthExportConfiguration.didStartExport has been removed
-API breakage: var HealthExportConfiguration.didEndExport has been removed
-API breakage: constructor HealthExportConfiguration.init(destination:sampleTypes:timeRange:didStartExport:didEndExport:) has been removed

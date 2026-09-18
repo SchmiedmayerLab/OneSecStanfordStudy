@@ -12,7 +12,7 @@ import SwiftUI
 @available(iOS 18, *)
 struct StudySurveySheet: View {
     @Environment(\.dismiss) private var dismiss
-    @Environment(OneSecStanfordStudy.self) private var oneSecStanfordStudy
+    @Environment(OneSecStanfordStudyModule.self) private var oneSecStanfordStudy
 
     @State private var didCompleteInitialNavigation = false
     @State private var isShowingCancelAlert = false
@@ -163,7 +163,7 @@ struct StudySurveySheet: View {
 
     private func initiateHealthExport() async {
         do {
-            try await oneSecStanfordStudy.triggerHealthExport(forceSessionReset: false)
+            try await oneSecStanfordStudy.triggerHealthExport()
         } catch {
             oneSecStanfordStudy.logger.error("Error initiating bulk health export: \(error)")
             healthExportErrorMessage = error.localizedDescription

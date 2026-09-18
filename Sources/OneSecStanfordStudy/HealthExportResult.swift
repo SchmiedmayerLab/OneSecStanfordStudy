@@ -4,16 +4,17 @@
 //
 
 public import Foundation
+public import GroveHealthKitBulkExport
 
 /// The terminal result of one local export attempt; it does not describe upload status.
 public struct HealthExportResult: Sendable {
     public enum Outcome: Sendable {
         /// Every configured batch succeeded and the final checkpoint was stored.
         case succeeded(HealthExportBatchSummary)
-        /// Processing stopped with failed, pending or unaccounted-for batches.
+        /// The session paused, or its batch counts do not establish completion.
         case incomplete(HealthExportBatchSummary)
         /// The final checkpoint could not be stored; retain files and retry state.
-        case failedToPersist(HealthExportBatchSummary, any Error)
+        case failedToPersist(HealthExportBatchSummary, CheckpointWriteFailure)
         /// The attempt was cancelled; files already emitted may still need uploading.
         case cancelled(CancellationReason)
         /// No file stream was opened. The error is also thrown to the initiating caller.
