@@ -25,8 +25,8 @@ struct OneSecStanfordStudyTests {
             destination: destination,
             sampleTypes: sampleTypes,
             timeRange: timeRange,
-            didStartExport: { _ in },
-            didEndExport: {}
+            didStartLocalExport: { _, _ in },
+            didFinishLocalExport: { _ in }
         )
 
         #expect(configuration.destination == destination)
@@ -107,6 +107,7 @@ struct OneSecStanfordStudyTests {
         let toJson = {
             try #require(String(bytes: try JSONEncoder().encode($0 as Observation), encoding: .utf8))
         }
+        var observation = observation
         observation.stripDeviceNameMetadata()
         let containsNameAfter = try toJson(observation).localizedCaseInsensitiveContains("lukas")
         #expect(!containsNameAfter)

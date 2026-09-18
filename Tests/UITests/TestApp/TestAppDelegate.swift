@@ -11,17 +11,6 @@ import OneSecStanfordStudy
 import SwiftUI
 
 final class TestAppDelegate: NSObject, UIApplicationDelegate {
-    private var sampleTypes: Set<HKObjectType> {
-        var types: Set<HKObjectType> = [
-            HKQuantityType(.stepCount),
-            HKCategoryType(.sleepAnalysis)
-        ]
-        if #available(iOS 18.0, *) {
-            types.insert(.stateOfMindType())
-        }
-        return types
-    }
-
     func application(
         _ application: UIApplication,
         willFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? // swiftlint:disable:this discouraged_optional_collection
@@ -32,21 +21,20 @@ final class TestAppDelegate: NSObject, UIApplicationDelegate {
             launchOptions: launchOptions,
             healthExportConfig: .init(
                 destination: FileManager.default.temporaryDirectory,
-                sampleTypes: sampleTypes,
                 timeRange: calendar.date(byAdding: .year, value: -1, to: .now)!..<Date.now, // swiftlint:disable:this force_unwrapping
-                didStartExport: Self.handleHealthExportDidStart,
-                didEndExport: Self.handleHealthExportDidEnd
+                didStartLocalExport: Self.handleLocalExportDidStart,
+                didFinishLocalExport: Self.handleLocalExportDidFinish
             )
         )
         return true
     }
 
     @MainActor
-    private static func handleHealthExportDidStart(_ urls: AnyAsyncSequence<URL, Never>) {
+    private static func handleLocalExportDidStart(_ attemptID: UUID, _ urls: AnyAsyncSequence<URL, Never>) {
         Task {
             do {
                 for try await url in urls {
-                    print("Did create export batch \(url)")
+                    print("Local export \(attemptID) created batch \(url)")
                 }
             } catch {
                 fatalError("Should not throw an error during testing here ...")
@@ -55,7 +43,7 @@ final class TestAppDelegate: NSObject, UIApplicationDelegate {
     }
 
     @MainActor
-    private static func handleHealthExportDidEnd() {
-        print("Health Export complete")
+    private static func handleLocalExportDidFinish(_ result: HealthExportResult) {
+        print("Local export \(result.attemptID): \(result.outcome)")
     }
 }

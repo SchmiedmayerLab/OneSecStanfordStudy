@@ -38,7 +38,7 @@ open class OneSecStanfordStudyModule: NSObject {
         case awaitingParentalConsent
         /// The study is currently active.
         case active
-        /// The study has been completed.
+        /// The survey flow has completed.
         case completed
     }
 
@@ -84,13 +84,13 @@ open class OneSecStanfordStudyModule: NSObject {
 }
 
 public struct HealthExportConfiguration: Sendable {
-    /// Callback that lets the app know that the health export was started.
-    ///
-    /// - parameter files: An `AsyncSequence` that will yield the `URL`s of the local files created from the individual export batches.
-    public typealias DidStartExport = @Sendable @MainActor (_ files: AnyAsyncSequence<URL, Never>) -> Void
+    /// Called once an attempt opens its file stream; URLs arrive as nonempty batches succeed.
+    /// Consume the stream in an app-owned task. This callback does not wait for any files or uploads.
+    public typealias DidStartLocalExport = @Sendable @MainActor (_ attemptID: UUID, _ files: AnyAsyncSequence<URL, Never>) -> Void
 
-    /// Callback that lets the app know that the health export has completed.
-    public typealias DidEndExport = @Sendable @MainActor () -> Void
+    /// Called once per attempt with its terminal local-processing outcome, including checkpoint failures.
+    /// It does not wait for the file consumer or uploads. Startup failure has no preceding start callback.
+    public typealias DidFinishLocalExport = @Sendable @MainActor (_ result: HealthExportResult) -> Void
 
     /// Directory to which the Health export files should be written.
     public let destination: URL
@@ -98,23 +98,36 @@ public struct HealthExportConfiguration: Sendable {
     public let sampleTypes: Set<HKObjectType>
     /// The time range for which health samples should be exported.
     public let timeRange: Range<Date>
-    /// Callback that will be invoked when the health export is started.
-    public let didStartExport: DidStartExport
-    /// Callback that will be invoked when the health export is completed.
-    public let didEndExport: DidEndExport
+    public let didStartLocalExport: DidStartLocalExport
+    public let didFinishLocalExport: DidFinishLocalExport
 
-    /// Create a new Health Export Configuration.
+    /// Create a configuration with handlers for file delivery and local processing outcomes.
     public init(
         destination: URL,
-        sampleTypes: Set<HKObjectType>,
+        sampleTypes: Set<HKObjectType> = HealthExportConfiguration.defaultSampleTypes,
         timeRange: Range<Date>,
-        didStartExport: @escaping DidStartExport,
-        didEndExport: @escaping DidEndExport
+        didStartLocalExport: @escaping DidStartLocalExport,
+        didFinishLocalExport: @escaping DidFinishLocalExport
     ) {
         self.destination = destination
         self.sampleTypes = sampleTypes
         self.timeRange = timeRange
-        self.didStartExport = didStartExport
-        self.didEndExport = didEndExport
+        self.didStartLocalExport = didStartLocalExport
+        self.didFinishLocalExport = didFinishLocalExport
+    }
+}
+
+
+extension HealthExportConfiguration {
+    /// Validates the destination, sample types, and time range.
+    func validate() throws {
+        guard destination.isFileURL else { throw ValidationError.invalidDestination }
+        guard !timeRange.isEmpty else { throw ValidationError.emptyTimeRange }
+        guard !sampleTypes.isEmpty else { throw ValidationError.emptySampleTypes }
+        guard sampleTypes.allSatisfy({ $0 is HKSampleType }) else { throw ValidationError.unsupportedObjectType }
+    }
+
+    enum ValidationError: Error {
+        case invalidDestination, emptyTimeRange, emptySampleTypes, unsupportedObjectType
     }
 }

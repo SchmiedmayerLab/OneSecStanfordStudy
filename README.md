@@ -19,7 +19,7 @@ Stanford study integration module for the one sec app's Digital Interventions Ou
 
 ## Overview
 
-This package combines the original interface and implementation packages into one package that depends on the Spezi monorepo.
+This package combines the original interface and implementation packages into one package that depends on the Grove monorepo.
 
 The old two-package setup worked around a deployment-target mismatch by dynamically loading the iOS 18 implementation from a separate framework while exposing an iOS 15 interface package.
 The new single-repo version no longer needs that workaround: apps can depend on this single package and link the implementation directly.
@@ -29,17 +29,18 @@ The new single-repo version no longer needs that workaround: apps can depend on 
 
 Add this package to your app and select the `OneSecStanfordStudy` product. The package can be added to app targets that support iOS 15 or newer. The study integration is active on iOS 18 and newer; on older iOS versions, initialization and the root view modifier are no-ops.
 
-This setup temporarily depends on the Spezi monorepo feature branch that adds the monorepo-backed deployment target support:
+This package currently depends on Grove's export-fix branch:
 
 ```swift
-.package(url: "https://github.com/SchmiedmayerLab/Spezi.git", branch: "oldiOSVersion", traits: [])
+.package(
+    url: "https://github.com/SchmiedmayerLab/Grove.git",
+    branch: "feature/healthkit-export-integrity",
+    traits: []
+)
 ```
 
-After the Spezi changes are merged and tagged, replace the branch dependency with the tagged `0.x` release range:
-
-```swift
-.package(url: "https://github.com/SchmiedmayerLab/Spezi.git", "0.1.0"..<"0.2.0", traits: [])
-```
+That branch enables lowered deployment targets for iOS 15 compatibility.
+Consume this study package through its branch while it uses a branch dependency.
 
 Then add the product dependency to the target that needs it:
 
@@ -71,13 +72,28 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
             launchOptions: launchOptions,
             healthExportConfig: HealthExportConfiguration(
                 destination: healthExportDirectory,
-                sampleTypes: sampleTypes,
                 timeRange: timeRange,
-                didStartExport: { files in
-                    // Upload or process the generated files.
+                didStartLocalExport: { attemptID, files in
+                    // Consume files in an app-owned task and persist upload jobs with attemptID.
                 },
-                didEndExport: {
-                    // Handle completion.
+                didFinishLocalExport: { result in
+                    switch result.outcome {
+                    case .succeeded(let summary):
+                        // Record successful local processing for result.attemptID.
+                        break
+                    case .incomplete(let summary):
+                        // Record batch counts and retain retry state.
+                        break
+                    case .failedToPersist(let summary, let error):
+                        // Retain files and retry state; the checkpoint was not confirmed.
+                        break
+                    case .cancelled(let reason):
+                        // Close this attempt; retain files already queued for upload.
+                        break
+                    case .failedToStart(let error):
+                        // Record the startup error; this attempt has no file stream.
+                        break
+                    }
                 }
             )
         )
@@ -85,6 +101,59 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
     }
 }
 ```
+
+### Export callbacks
+
+The package queries HealthKit, converts samples and writes local batch files.
+The calling app owns durable upload jobs, retries and server reconciliation.
+
+| Callback | Payload and timing | Caller responsibility |
+|---|---|---|
+| `didStartLocalExport(attemptID, files)` | Called when an attempt opens its stream. URLs arrive as nonempty batches succeed; the stream may be empty. | Start one app-owned consumer task. Persist each file and its upload job with the attempt ID. |
+| `didFinishLocalExport(result)` | One terminal outcome for that attempt, with the same `attemptID`. Startup failure can occur without a start callback. | Record the outcome and batch counts; keep upload status separate. |
+
+`result.outcome` is one of:
+
+| Outcome | Meaning |
+|---|---|
+| `.succeeded(summary)` | Every configured batch succeeded, including empty queries, and the final checkpoint was stored. This does not establish that every sample type contained data. |
+| `.incomplete(summary)` | Processing stopped with failed, pending or unaccounted-for batches. Launch restoration remains enabled for retry. |
+| `.failedToPersist(summary, error)` | The final checkpoint write failed. Batch counts can be complete while restoration state is not confirmed. Retry remains enabled; retain emitted files. |
+| `.cancelled(reason)` | Reset, session termination or startup-task cancellation ended the attempt. Previously emitted files remain the caller's responsibility. |
+| `.failedToStart(error)` | Validation, authorization, session preparation or starting failed before a stream was opened. The error is also thrown to the initiating caller. |
+
+`HealthExportBatchSummary` counts all batches in the session, including earlier attempts: `totalBatches`, successful `completedBatches`, `failedBatches` and remaining `pendingBatches` (excluding failures).
+A successful empty query emits no file; batch counts are not file or sample counts.
+On resume, only newly processed files are emitted, so reconcile uploads against the persisted manifest across attempts.
+
+Both callbacks run synchronously on `MainActor`; keep them short and delegate file/network work to an app-owned coordinator.
+The result can arrive before the consumer drains the stream or finishes uploads.
+If the host records `didEndSequence`, emit it after every yielded file has a durable upload job.
+If it records `didFinishUploading`, emit it after reconciling server receipts with the file manifest.
+Complete delivery requires successful local processing, a drained stream and acknowledgment of all expected files.
+Survey completion is separate.
+
+Each retry or reset creates a new attempt ID; it is not a participant ID or a persistent export-session ID.
+The host must retain the association with the participant and export manifest across launches.
+Duplicate starts of a running session and already-completed sessions do not create new callbacks or replay files.
+Callbacks are in-process notifications: app termination can prevent a terminal callback, and results are not replayed after relaunch.
+A reset reports cancellation of the old attempt before preparing the replacement; its stream may still be draining.
+
+### Sample types
+
+`HealthExportConfiguration.defaultSampleTypes` contains eight types.
+
+| Protocol measure | HealthKit type |
+|---|---|
+| Time in bed and awake/REM/core/deep sleep | `HKCategoryType(.sleepAnalysis)` |
+| Steps | `HKQuantityType(.stepCount)` |
+| Walking/running distance | `HKQuantityType(.distanceWalkingRunning)` |
+| Flights climbed | `HKQuantityType(.flightsClimbed)` |
+| Active energy | `HKQuantityType(.activeEnergyBurned)` |
+| Workouts | `HKObjectType.workoutType()` |
+| State of mind | `HKObjectType.stateOfMindType()` |
+| Time in daylight | `HKQuantityType(.timeInDaylight)` |
+
 
 Apply `.oneSecStanfordStudy()` to the root of your SwiftUI hierarchy:
 

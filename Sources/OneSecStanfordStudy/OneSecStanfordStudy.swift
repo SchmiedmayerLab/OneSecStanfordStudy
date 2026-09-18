@@ -8,10 +8,10 @@
 
 // swiftlint:disable file_types_order
 
-@_spi(APISupport) import Spezi
-private import SpeziFoundation
-private import SpeziHealthKit
-private import SpeziHealthKitBulkExport
+@_spi(APISupport) import Grove
+private import GroveFoundation
+private import GroveHealthKit
+private import GroveHealthKitBulkExport
 import OSLog
 import SwiftUI
 import UIKit
@@ -26,7 +26,7 @@ final class OneSecStanfordStudy: OneSecStanfordStudyModule, Module, EnvironmentA
 
     override static var studyIntegrationViewModifier: any ViewModifier {
         struct OneSecStanfordStudyInjectionModifier: ViewModifier {
-            let runtime: Spezi
+            let runtime: Grove
             func body(content: Content) -> some View {
                 if let oneSecStanfordStudy = runtime.modules.lazy.compactMap({ $0 as? OneSecStanfordStudy }).first {
                     // SwiftUI's Environment mechanism seems to be using the static type of the parameter passed to `.environment()`,
@@ -39,10 +39,10 @@ final class OneSecStanfordStudy: OneSecStanfordStudyModule, Module, EnvironmentA
                 }
             }
         }
-        guard let runtime = SpeziAppDelegate.spezi else {
+        guard let runtime = GroveAppDelegate.grove else {
             preconditionFailure("\(#function) accessed before 'initialize' was called!")
         }
-        return SpeziViewModifier(runtime).concat(OneSecStanfordStudyInjectionModifier(runtime: runtime))
+        return GroveViewModifier(runtime).concat(OneSecStanfordStudyInjectionModifier(runtime: runtime))
     }
 
     @ObservationIgnored @Application(\.logger) var logger
@@ -52,6 +52,10 @@ final class OneSecStanfordStudy: OneSecStanfordStudyModule, Module, EnvironmentA
     nonisolated private let healthExportConfig: HealthExportConfiguration
     nonisolated(unsafe) private let fileManager = FileManager.default
     private let prefsStore = LocalPreferencesStore.standard
+    @ObservationIgnored private var exportStartTask: Task<Void, any Error>?
+    /// Identity also rejects stale completion callbacks; `exportStartTask` coalesces concurrent starts.
+    @ObservationIgnored private var activeExportAttempt: HealthExportAttempt?
+
 
     /// Creates a new instance of the `OneSecStanfordStudy` module
     nonisolated init(healthExportConfig: HealthExportConfiguration) {
@@ -75,10 +79,7 @@ final class OneSecStanfordStudy: OneSecStanfordStudyModule, Module, EnvironmentA
                 if prefsStore[.didInitiateBulkExport] {
                     // we've initiated the Health Export at some point in the past.
                     // we now check if it has completed, and, if not, tell it to continue.
-                    let session = try await healthExportSession()
-                    if session.state != .completed {
-                        try await triggerHealthExport(forceSessionReset: false)
-                    }
+                    try await triggerHealthExport(forceSessionReset: false)
                 }
             } catch {
                 logger.error("\(error)")
@@ -100,22 +101,58 @@ final class OneSecStanfordStudy: OneSecStanfordStudyModule, Module, EnvironmentA
     // MARK: HealthKit Data Collection
 
     override func triggerHealthExport(forceSessionReset: Bool) async throws {
-        if forceSessionReset {
-            try await bulkExporter.deleteSessionRestorationInfo(for: .oneSecStanfordStudy)
+        if let exportStartTask {
+            // Coalesce page navigation and launch restoration across suspension points.
+            try await exportStartTask.value
+            return
         }
-        if !fileManager.itemExists(at: healthExportConfig.destination) {
-            try fileManager.createDirectory(at: healthExportConfig.destination, withIntermediateDirectories: true)
+        let task = Task { @MainActor in
+            try await self.startHealthExport(forceSessionReset: forceSessionReset)
         }
-        try await healthKit.askForAuthorization(for: .init(read: healthExportConfig.sampleTypes))
-        let session = try await healthExportSession()
-        let stream = try session.start(retryFailedBatches: true)
-        prefsStore[.didInitiateBulkExport] = true
-        if #available(iOS 18, *) {
-            healthExportConfig.didStartExport(AnyAsyncSequence(stream.compactMap(\.self)))
-        } else {
-            healthExportConfig.didStartExport(AnyAsyncSequence(unsafelyAssumingDoesntThrow: stream.compactMap(\.self)))
+        exportStartTask = task
+        defer { exportStartTask = nil }
+        try await task.value
+    }
+
+    private func startHealthExport(forceSessionReset: Bool) async throws {
+        let attempt = HealthExportAttempt(configuration: healthExportConfig)
+        do {
+            try Task.checkCancellation()
+            try healthExportConfig.validate()
+            if forceSessionReset {
+                let previousAttempt = activeExportAttempt
+                activeExportAttempt = nil
+                previousAttempt?.finish(.cancelled(.sessionReset))
+                try await bulkExporter.deleteSessionRestorationInfo(for: .oneSecStanfordStudy)
+            }
+            if !fileManager.itemExists(at: healthExportConfig.destination) {
+                try fileManager.createDirectory(at: healthExportConfig.destination, withIntermediateDirectories: true)
+            }
+            try await healthKit.askForAuthorization(for: .init(read: healthExportConfig.sampleTypes))
+            try Task.checkCancellation()
+            let session = try await healthExportSession()
+            try Task.checkCancellation()
+            guard session.state != .running else { return }
+            if session.state == .completed && session.failedBatches.isEmpty && session.pendingBatches.isEmpty {
+                return
+            }
+            // A retry can arrive before the previous attempt's queued completion callback.
+            if let previousAttempt = activeExportAttempt {
+                trackCompletion(of: session, attempt: previousAttempt)
+            }
+            let stream = try session.start(retryFailedBatches: true, concurrencyLevel: .limit(4))
+            prefsStore[.didInitiateBulkExport] = true
+            activeExportAttempt = attempt
+            attempt.start(files: AnyAsyncSequence(stream.compactMap(\.self)))
+            trackCompletion(of: session, attempt: attempt)
+        } catch {
+            if error is CancellationError {
+                attempt.finish(.cancelled(.taskCancelled))
+            } else {
+                attempt.finish(.failedToStart(error))
+            }
+            throw error
         }
-        _trackCompletion(of: session)
     }
 
     /// Obtains the bulk health export session.
@@ -130,25 +167,30 @@ final class OneSecStanfordStudy: OneSecStanfordStudyModule, Module, EnvironmentA
         )
     }
 
-    private func _trackCompletion(of session: some BulkExportSession) {
-        let isCompleted = withObservationTracking {
-            session.state == .completed
-        } onChange: {
-            Task { @MainActor in
-                self._trackCompletion(of: session)
+    private func trackCompletion(of session: some BulkExportSession, attempt: HealthExportAttempt) {
+        attempt.trackCompletion(of: session) { [self] outcome in
+            guard activeExportAttempt === attempt else { return }
+            activeExportAttempt = nil
+            switch outcome {
+            case .succeeded:
+                prefsStore[.didInitiateBulkExport] = false
+            case .incomplete(let summary):
+                // Keep launch restoration enabled so failed batches remain retryable.
+                logger.error("Health export incomplete: \(summary.failedBatches) failed, \(summary.pendingBatches) pending batches")
+            case .failedToPersist(_, let error):
+                logger.error("Health export checkpoint failed: \(error)")
+            case .cancelled, .failedToStart:
+                break
             }
         }
-        if isCompleted {
-            prefsStore[.didInitiateBulkExport] = false
-            healthExportConfig.didEndExport()
-        }
     }
+
 }
 
 // MARK: App Delegate and Standard
 
 @available(iOS 18, *)
-private final class OneSecStanfordStudyAppDelegate: SpeziAppDelegate {
+private final class OneSecStanfordStudyAppDelegate: GroveAppDelegate {
     private let healthExportConfig: HealthExportConfiguration
 
     override var configuration: Configuration {
@@ -179,17 +221,18 @@ extension BulkExportSessionIdentifier {
 
 @available(iOS 18, *)
 extension LocalPreferenceKeys.Namespace {
-    fileprivate static let speziOneSec: Self = .custom("edu.stanford.SpeziOneSec")
+    // Preserve the namespace used by existing installations.
+    fileprivate static let oneSecStudy: Self = .custom("edu.stanford.SpeziOneSec")
 }
 
 @available(iOS 18, *)
 extension LocalPreferenceKeys {
     fileprivate static let oneSecStanfordStudyState = LocalPreferenceKey<OneSecStanfordStudy.State>(
-        .init("state", in: .speziOneSec),
+        .init("state", in: .oneSecStudy),
         default: .available
     )
     fileprivate static let didInitiateBulkExport = LocalPreferenceKey<Bool>(
-        .init("didInitiateBulkExport", in: .speziOneSec),
+        .init("didInitiateBulkExport", in: .oneSecStudy),
         default: false
     )
 }
