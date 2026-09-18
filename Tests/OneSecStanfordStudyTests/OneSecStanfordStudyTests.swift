@@ -25,8 +25,8 @@ struct OneSecStanfordStudyTests {
             destination: destination,
             sampleTypes: sampleTypes,
             timeRange: timeRange,
-            didStartExport: { _ in },
-            didEndExport: {}
+            didStartLocalExport: { _, _ in },
+            didFinishLocalExport: { _ in }
         )
 
         #expect(configuration.destination == destination)
@@ -107,6 +107,7 @@ struct OneSecStanfordStudyTests {
         let toJson = {
             try #require(String(bytes: try JSONEncoder().encode($0 as Observation), encoding: .utf8))
         }
+        var observation = observation
         observation.stripDeviceNameMetadata()
         let containsNameAfter = try toJson(observation).localizedCaseInsensitiveContains("lukas")
         #expect(!containsNameAfter)
@@ -143,58 +144,58 @@ extension Observation {
                 {
                   "extension" : [
                     {
-                      "url" : "https://bdh.stanford.edu/fhir/defs/sourceDevice/name",
+                      "url" : "https://grovealliance.org/fhir/core/StructureDefinition/sourceDevice/name",
                       "valueString" : "Apple Watch"
                     },
                     {
-                      "url" : "https://bdh.stanford.edu/fhir/defs/sourceDevice/manufacturer",
+                      "url" : "https://grovealliance.org/fhir/core/StructureDefinition/sourceDevice/manufacturer",
                       "valueString" : "Apple Inc."
                     },
                     {
-                      "url" : "https://bdh.stanford.edu/fhir/defs/sourceDevice/model",
+                      "url" : "https://grovealliance.org/fhir/core/StructureDefinition/sourceDevice/model",
                       "valueString" : "Watch"
                     },
                     {
-                      "url" : "https://bdh.stanford.edu/fhir/defs/sourceDevice/hardwareVersion",
+                      "url" : "https://grovealliance.org/fhir/core/StructureDefinition/sourceDevice/hardwareVersion",
                       "valueString" : "Watch6,15"
                     },
                     {
-                      "url" : "https://bdh.stanford.edu/fhir/defs/sourceDevice/softwareVersion",
+                      "url" : "https://grovealliance.org/fhir/core/StructureDefinition/sourceDevice/softwareVersion",
                       "valueString" : "11.5"
                     }
                   ],
-                  "url" : "https://bdh.stanford.edu/fhir/defs/sourceDevice"
+                  "url" : "https://grovealliance.org/fhir/core/StructureDefinition/sourceDevice"
                 },
                 {
                   "extension" : [
                     {
                       "extension" : [
                         {
-                          "url" : "https://bdh.stanford.edu/fhir/defs/sourceRevision/source/name",
+                          "url" : "https://grovealliance.org/fhir/core/StructureDefinition/sourceRevision/source/name",
                           "valueString" : "Lukas' Apple Watch"
                         },
                         {
-                          "url" : "https://bdh.stanford.edu/fhir/defs/sourceRevision/source/bundleIdentifier",
+                          "url" : "https://grovealliance.org/fhir/core/StructureDefinition/sourceRevision/source/bundleIdentifier",
                           "valueString" : "com.apple.health.94C8E349-0D09-4184-BF6C-AF11692FA465"
                         }
                       ],
-                      "url" : "https://bdh.stanford.edu/fhir/defs/sourceRevision/source"
+                      "url" : "https://grovealliance.org/fhir/core/StructureDefinition/sourceRevision/source"
                     },
                     {
-                      "url" : "https://bdh.stanford.edu/fhir/defs/sourceRevision/version",
+                      "url" : "https://grovealliance.org/fhir/core/StructureDefinition/sourceRevision/version",
                       "valueString" : "11.5"
             
                     },
                     {
-                      "url" : "https://bdh.stanford.edu/fhir/defs/sourceRevision/productType",
+                      "url" : "https://grovealliance.org/fhir/core/StructureDefinition/sourceRevision/productType",
                       "valueString" : "Watch6,15"
                     },
                     {
-                      "url" : "https://bdh.stanford.edu/fhir/defs/sourceRevision/OSVersion",
+                      "url" : "https://grovealliance.org/fhir/core/StructureDefinition/sourceRevision/OSVersion",
                       "valueString" : "11.5.0"
                     }
                   ],
-                  "url" : "https://bdh.stanford.edu/fhir/defs/sourceRevision"
+                  "url" : "https://grovealliance.org/fhir/core/StructureDefinition/sourceRevision"
                 }
               ],
               "id" : "549A247B-2769-4399-B0FF-8B5577314B1C",
@@ -238,30 +239,30 @@ extension Observation {
                     {
                       "extension" : [
                         {
-                          "url" : "https://bdh.stanford.edu/fhir/defs/sourceRevision/source/name",
+                          "url" : "https://grovealliance.org/fhir/core/StructureDefinition/sourceRevision/source/name",
                           "valueString" : "AutoSleep"
                         },
                         {
-                          "url" : "https://bdh.stanford.edu/fhir/defs/sourceRevision/source/bundleIdentifier",
+                          "url" : "https://grovealliance.org/fhir/core/StructureDefinition/sourceRevision/source/bundleIdentifier",
                           "valueString" : "com.tantsissa.AutoSleep"
                         }
                       ],
-                      "url" : "https://bdh.stanford.edu/fhir/defs/sourceRevision/source"
+                      "url" : "https://grovealliance.org/fhir/core/StructureDefinition/sourceRevision/source"
                     },
                     {
-                      "url" : "https://bdh.stanford.edu/fhir/defs/sourceRevision/version",
+                      "url" : "https://grovealliance.org/fhir/core/StructureDefinition/sourceRevision/version",
                       "valueString" : "6.14.0"
                     },
                     {
-                      "url" : "https://bdh.stanford.edu/fhir/defs/sourceRevision/productType",
+                      "url" : "https://grovealliance.org/fhir/core/StructureDefinition/sourceRevision/productType",
                       "valueString" : "iPhone16,2"
                     },
                     {
-                      "url" : "https://bdh.stanford.edu/fhir/defs/sourceRevision/OSVersion",
+                      "url" : "https://grovealliance.org/fhir/core/StructureDefinition/sourceRevision/OSVersion",
                       "valueString" : "18.5.0"
                     }
                   ],
-                  "url" : "https://bdh.stanford.edu/fhir/defs/sourceRevision"
+                  "url" : "https://grovealliance.org/fhir/core/StructureDefinition/sourceRevision"
                 }
               ],
               "id" : "F8A59190-87C9-4652-BC3D-2C2653654C25",
@@ -310,39 +311,39 @@ extension Observation {
                     {
                       "extension" : [
                         {
-                          "url" : "https://bdh.stanford.edu/fhir/defs/sourceRevision/source/name",
+                          "url" : "https://grovealliance.org/fhir/core/StructureDefinition/sourceRevision/source/name",
                           "valueString" : "Lukas' Apple Watch"
                         },
                         {
-                          "url" : "https://bdh.stanford.edu/fhir/defs/sourceRevision/source/bundleIdentifier",
+                          "url" : "https://grovealliance.org/fhir/core/StructureDefinition/sourceRevision/source/bundleIdentifier",
                           "valueString" : "com.apple.health.B83FE7C9-B62D-44D9-92A8-5CB2AE037A06"
                         }
                       ],
-                      "url" : "https://bdh.stanford.edu/fhir/defs/sourceRevision/source"
+                      "url" : "https://grovealliance.org/fhir/core/StructureDefinition/sourceRevision/source"
                     },
                     {
-                      "url" : "https://bdh.stanford.edu/fhir/defs/sourceRevision/version",
+                      "url" : "https://grovealliance.org/fhir/core/StructureDefinition/sourceRevision/version",
                       "valueString" : "26.5"
                     },
                     {
-                      "url" : "https://bdh.stanford.edu/fhir/defs/sourceRevision/productType",
+                      "url" : "https://grovealliance.org/fhir/core/StructureDefinition/sourceRevision/productType",
                       "valueString" : "Watch7,12"
                     },
                     {
-                      "url" : "https://bdh.stanford.edu/fhir/defs/sourceRevision/OSVersion",
+                      "url" : "https://grovealliance.org/fhir/core/StructureDefinition/sourceRevision/OSVersion",
                       "valueString" : "26.5.0"
                     }
                   ],
-                  "url" : "https://bdh.stanford.edu/fhir/defs/sourceRevision"
+                  "url" : "https://grovealliance.org/fhir/core/StructureDefinition/sourceRevision"
                 },
                 {
                   "extension" : [
                     {
-                      "url" : "https://bdh.stanford.edu/fhir/defs/metadata/HKTimeZone",
+                      "url" : "https://grovealliance.org/fhir/core/StructureDefinition/metadata/HKTimeZone",
                       "valueString" : "Europe/Berlin"
                     }
                   ],
-                  "url" : "https://bdh.stanford.edu/fhir/defs/metadata"
+                  "url" : "https://grovealliance.org/fhir/core/StructureDefinition/metadata"
                 }
               ],
               "id" : "C7C7E250-F086-4C54-B9DF-8C9A52E65050",
@@ -451,30 +452,30 @@ extension Observation {
                     {
                       "extension" : [
                         {
-                          "url" : "https://bdh.stanford.edu/fhir/defs/sourceRevision/source/name",
+                          "url" : "https://grovealliance.org/fhir/core/StructureDefinition/sourceRevision/source/name",
                           "valueString" : "Lukas' Apple Watch"
                         },
                         {
-                          "url" : "https://bdh.stanford.edu/fhir/defs/sourceRevision/source/bundleIdentifier",
+                          "url" : "https://grovealliance.org/fhir/core/StructureDefinition/sourceRevision/source/bundleIdentifier",
                           "valueString" : "com.apple.health.B83FE7C9-B62D-44D9-92A8-5CB2AE037A06"
                         }
                       ],
-                      "url" : "https://bdh.stanford.edu/fhir/defs/sourceRevision/source"
+                      "url" : "https://grovealliance.org/fhir/core/StructureDefinition/sourceRevision/source"
                     },
                     {
-                      "url" : "https://bdh.stanford.edu/fhir/defs/sourceRevision/version",
+                      "url" : "https://grovealliance.org/fhir/core/StructureDefinition/sourceRevision/version",
                       "valueString" : "26.1"
                     },
                     {
-                      "url" : "https://bdh.stanford.edu/fhir/defs/sourceRevision/productType",
+                      "url" : "https://grovealliance.org/fhir/core/StructureDefinition/sourceRevision/productType",
                       "valueString" : "Watch7,12"
                     },
                     {
-                      "url" : "https://bdh.stanford.edu/fhir/defs/sourceRevision/OSVersion",
+                      "url" : "https://grovealliance.org/fhir/core/StructureDefinition/sourceRevision/OSVersion",
                       "valueString" : "26.1.0"
                     }
                   ],
-                  "url" : "https://bdh.stanford.edu/fhir/defs/sourceRevision"
+                  "url" : "https://grovealliance.org/fhir/core/StructureDefinition/sourceRevision"
                 }
               ],
               "id" : "77E3A6C9-5272-4D6B-AC5F-82F48AABD190",

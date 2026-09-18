@@ -6,7 +6,7 @@
 // SPDX-License-Identifier: MIT
 //
 
-@_spi(APISupport) import OneSecStanfordStudy
+import OneSecStanfordStudy
 import SwiftUI
 
 @available(iOS 18, *)
