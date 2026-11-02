@@ -15,8 +15,8 @@ import HealthKit
 import Testing
 
 @Suite @MainActor struct HealthExportStartupTests {
-    @Test(.timeLimit(.minutes(1)), arguments: [false, true]) @available(iOS 18, *)
-    func directoryFailureReportsErrorAndRespectsReset(forceReset: Bool) async throws {
+    @Test(.timeLimit(.minutes(1)), arguments: [false, true], [false, true]) @available(iOS 18, *)
+    func directoryFailureReportsErrorAndRespectsReset(forceReset: Bool, destinationIsFile: Bool) async throws {
         let namespace = StorageNamespace.custom("HealthExportStartupTests.\(UUID().uuidString)")
         let storage = LocalStorage(namespace: namespace)
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
@@ -33,7 +33,7 @@ import Testing
         var starts = 0
         var results: [HealthExportResult] = []
         let config = HealthExportConfiguration(
-            destination: blocker.appendingPathComponent("export"),
+            destination: destinationIsFile ? blocker : blocker.appendingPathComponent("export"),
             sampleTypes: [HKQuantityType(.stepCount)],
             timeRange: Date(timeIntervalSince1970: 0)..<Date(timeIntervalSince1970: 1),
             didStartLocalExport: { _, _ in starts += 1 },
@@ -68,6 +68,46 @@ import Testing
         #expect((reportedError as NSError).code == error.code)
         #expect(try Data(contentsOf: blocker) == Data("existing file".utf8))
         #expect(try storage.load(checkpoint) == (forceReset ? nil : existingCheckpoint))
+        let restorationKey = LocalPreferenceKey<Bool>(
+            .init("didInitiateBulkExport", in: .custom("edu.stanford.SpeziOneSec")), default: false
+        )
+        #expect(LocalPreferencesStore(defaults: defaults)[restorationKey])
+    }
+
+    @Test(.timeLimit(.minutes(1))) @available(iOS 18, *)
+    func launchRetriesFailedStartup() async throws {
+        let suiteName = "HealthExportStartupTests.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let (results, continuation) = AsyncStream.makeStream(of: HealthExportResult.self)
+        defer { continuation.finish() }
+        let config = HealthExportConfiguration(
+            destination: try #require(URL(string: "https://example.invalid/export")),
+            timeRange: Date(timeIntervalSince1970: 0)..<Date(timeIntervalSince1970: 1),
+            didStartLocalExport: { _, _ in Issue.record("Invalid configuration must not open a stream") },
+            didFinishLocalExport: { continuation.yield($0) }
+        )
+        let module = OneSecStanfordStudyModule(healthExportConfig: config, preferences: LocalPreferencesStore(defaults: defaults))
+        await #expect(throws: HealthExportConfiguration.ValidationError.self) {
+            try await module.triggerHealthExport()
+        }
+        var iterator = results.makeAsyncIterator()
+        let first = try #require(await iterator.next())
+        let restored = OneSecStanfordStudyModule(
+            healthExportConfig: config,
+            preferences: LocalPreferencesStore(defaults: try #require(UserDefaults(suiteName: suiteName)))
+        )
+        withDependencyResolution(standard: ExportTestStandard()) {
+            HealthKit()
+            BulkHealthExporter()
+            restored
+        }
+        let retried = try #require(await iterator.next())
+        #expect(retried.attemptID != first.attemptID)
+        guard case .failedToStart = retried.outcome else {
+            Issue.record("Launch must retry the pending request even if configuration still needs correction")
+            return
+        }
     }
 }
 

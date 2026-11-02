@@ -7,13 +7,13 @@ import Foundation
 
 /// Supported survey callback URLs.
 enum StudySurveyCallback: String {
-    case success, noteligible, waitingforconsent
+    case success = "success"
+    case noteligible = "noteligible"
+    case waitingforconsent = "waitingforconsent"
 
     init?(url: URL) {
         guard url.scheme?.lowercased() == "https",
-              url.host?.lowercased() == "one-sec.app",
-              url.port == nil || url.port == 443,
-              url.user == nil, url.password == nil else {
+              url.host?.lowercased() == "one-sec.app" else {
             return nil
         }
         let prefix = "/survey-callback/"

@@ -7,6 +7,7 @@
 //
 
 public import Foundation
+import GroveHealthKit
 public import HealthKit
 
 public struct HealthExportConfiguration: Sendable {
@@ -57,6 +58,9 @@ extension HealthExportConfiguration {
         guard !timeRange.isEmpty else { throw ValidationError.emptyTimeRange }
         guard !sampleTypes.isEmpty else { throw ValidationError.emptySampleTypes }
         guard sampleTypes.allSatisfy({ $0 is HKSampleType }) else { throw ValidationError.unsupportedObjectType }
+        if #available(iOS 18, *) {
+            guard sampleTypes.allSatisfy({ $0.sampleType != nil }) else { throw ValidationError.unsupportedObjectType }
+        }
     }
 
     enum ValidationError: Error {

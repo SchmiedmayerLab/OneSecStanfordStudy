@@ -11,23 +11,19 @@ SPDX-License-Identifier: MIT
 # OneSecStanfordStudy
 
 [![Build and Test](https://github.com/SchmiedmayerLab/OneSecStanfordStudy/actions/workflows/ci.yml/badge.svg)](https://github.com/SchmiedmayerLab/OneSecStanfordStudy/actions/workflows/ci.yml)
+[![Codecov](https://codecov.io/gh/SchmiedmayerLab/OneSecStanfordStudy/branch/main/graph/badge.svg)](https://codecov.io/gh/SchmiedmayerLab/OneSecStanfordStudy)
 [![REUSE status](https://api.reuse.software/badge/github.com/SchmiedmayerLab/OneSecStanfordStudy)](https://api.reuse.software/info/github.com/SchmiedmayerLab/OneSecStanfordStudy)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE.md)
 
 Stanford study integration module for the one sec app's Digital Interventions Outcome study.
 
-
 ## Overview
 
-This package links the Grove-based study implementation directly into the host app.
-It supports iOS 15 and newer; study features run on iOS 18 and newer.
+Supports iOS 15 and newer. Study features require iOS 18; initialization and the view modifier do nothing on earlier versions.
 
 ## Installation
 
-Add the `OneSecStanfordStudy` product to your app.
-On iOS 15–17, initialization and the root view modifier are no-ops.
-
-This package currently depends on Grove's export-fix branch:
+Use a branch dependency for this package. Its Grove dependency uses the iOS 15 configuration with optional traits disabled:
 
 ```swift
 .package(
@@ -37,10 +33,7 @@ This package currently depends on Grove's export-fix branch:
 )
 ```
 
-That branch enables lowered deployment targets for iOS 15 compatibility.
-Consume this study package through its branch while it uses a branch dependency.
-
-Then add the product dependency to the target that needs it:
+Add the `OneSecStanfordStudy` product to your app target:
 
 ```swift
 .target(
@@ -54,7 +47,7 @@ Then add the product dependency to the target that needs it:
 
 ## Usage
 
-Call `initializeOneSecStanfordStudy(_:launchOptions:healthExportConfig:)` from your app delegate's `application(_:willFinishLaunchingWithOptions:)` method:
+Initialize the study in your app delegate:
 
 ```swift
 import OneSecStanfordStudy
@@ -72,26 +65,10 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
                 destination: healthExportDirectory,
                 timeRange: timeRange,
                 didStartLocalExport: { attemptID, files in
-                    // Consume files in an app-owned task and persist upload jobs with attemptID.
+                    // Consume files in a Task and save an upload job for each URL.
                 },
                 didFinishLocalExport: { result in
-                    switch result.outcome {
-                    case .succeeded(let summary):
-                        // Record success for result.attemptID.
-                        break
-                    case .incomplete(let summary):
-                        // Record batch counts and retain retry state.
-                        break
-                    case .failedToPersist(let summary, let error):
-                        // Keep files and address error.category before retrying.
-                        break
-                    case .cancelled(let reason):
-                        // Keep files already queued for upload.
-                        break
-                    case .failedToStart(let error):
-                        // Record the error; no file stream was opened.
-                        break
-                    }
+                    // Record result.attemptID and result.outcome.
                 }
             )
         )
@@ -100,64 +77,62 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
 }
 ```
 
-### Export callbacks
+Apply the view modifier at the root of your SwiftUI hierarchy:
 
-The package queries HealthKit, converts samples and writes batch files.
-The host app handles uploads, upload retries and server receipts.
+```swift
+WindowGroup {
+    ContentView()
+        .oneSecStanfordStudy()
+}
+```
 
-| Callback | Contract |
-|---|---|
-| `didStartLocalExport(attemptID, files)` | Opens the attempt's stream. Consume it in an app-owned task and persist an upload job for each file. The stream may be empty. |
-| `didFinishLocalExport(result)` | Reports one final outcome with the same attempt ID. It can arrive before the stream is drained or uploads finish. Startup failure has no preceding start callback. |
+On iOS 18 and newer, access the module through the environment:
 
-Both callbacks run synchronously on `MainActor`; keep file and network work in the consumer task.
+```swift
+@Environment(OneSecStanfordStudyModule.self) private var oneSec
+```
+
+Use `makeOneSecStanfordStudySheet()` to present the survey.
+Use `updateState(.available)` to reset enrollment in TestFlight. Export progress and files are kept.
+Call module methods on `MainActor`.
+
+### Exports
+
+The package writes HealthKit data to local files. Your app uploads them and tracks backend receipts.
+
+- `didStartLocalExport(attemptID, files)` provides the file stream. Consume it in an app-owned task and save upload jobs as files arrive.
+- `didFinishLocalExport(result)` reports the local outcome. It can arrive before file consumption or uploads finish, or without a start callback if startup fails.
+
+Both callbacks run on `MainActor`. Each started attempt gets a new ID; associate it with the participant and upload jobs.
 
 | Outcome | Meaning |
 |---|---|
-| `.succeeded(summary)` | All batches succeeded and the final checkpoint was stored. Empty queries count as successful. |
-| `.incomplete(summary)` | The session paused or batch counts are incomplete. Retry remains enabled. |
-| `.failedToPersist(summary, error)` | The checkpoint write failed, even if all batches succeeded. `CheckpointWriteFailure` provides a recovery category, domain, code and message. |
-| `.cancelled(reason)` | Reset, termination or startup-task cancellation ended the attempt. Keep files already queued for upload. |
-| `.failedToStart(error)` | Startup failed before opening a stream. The error is also thrown to the caller. |
+| `.succeeded(summary)` | All batches succeeded and progress was saved. |
+| `.incomplete(summary)` | Processing paused or batches remain unfinished. |
+| `.failedToPersist(summary, error)` | Saving progress failed. Check `error.category` before retrying. |
+| `.cancelled(reason)` | The attempt was reset, terminated or cancelled. |
+| `.failedToStart(error)` | Startup failed. The error is also thrown to the caller. |
 
-`HealthExportBatchSummary` counts the whole session, including earlier attempts: `totalBatches`, `completedBatches`, `failedBatches` and `pendingBatches` (excluding failures).
-Empty queries emit no file; batch counts do not measure files, samples or upload delivery.
+Batch counts cover the whole session, including earlier attempts. Empty queries count as successful and produce no file, including when HealthKit read access is denied.
+Survey completion, local export success and confirmed uploads are separate. Report outcomes and upload status to your backend as needed.
 
-Record `didEndSequence` after every yielded file has a durable upload job, and `didFinishUploading` after all expected files have server receipts.
-Survey completion is independent of export and upload completion.
-On resume, the stream emits only newly processed files; reconcile uploads across attempts using the host's saved file manifest.
-
-Each started retry or reset gets a new attempt ID. Associate it with the participant and export manifest.
-Starting an already-running or completed session does not produce new callbacks or replay files.
-Callbacks are not persisted: app termination may prevent the final callback, and results are not replayed after launch.
-A successful reset reports cancellation before preparing its replacement; the old stream may still be draining.
+Keep files and upload jobs across attempts: resumed streams only yield newly processed files.
+Callbacks are not saved or replayed after app termination, and starting an already-running or completed session produces no new callbacks.
 
 ### Recovering an export
 
-For `.failedToPersist`, retain emitted files and upload jobs, then address `error.category`:
+Unfinished exports retry on the next launch, including failed starts. To retry sooner, resolve the error and call `triggerHealthExport()`.
+There is no automatic retry loop. Storage errors may require freeing space, waiting for availability or correcting permissions; invalid configuration needs fixing.
 
-| Category | Action before retrying |
-|---|---|
-| `.insufficientSpace` | Free device storage. |
-| `.temporarilyUnavailable` | Wait for storage to become available. |
-| `.accessDenied` | Check permissions and protected-data availability; the error alone does not identify the cause. |
-| `.invalidDestination` | Correct the storage location or configuration. |
-| `.unknown` | Inspect the error domain, code and message. |
+A normal retry keeps completed batches and the original sample types and date range.
+After a failed progress save, restarting the app may repeat batches. Deduplicate samples by participant ID and HealthKit UUID.
 
-Resume with `triggerHealthExport()`, as the export screen and launch restoration do.
-Call this public method on the environment-injected `OneSecStanfordStudyModule`, on `MainActor` on iOS 18 or newer.
-Retry after a user action or storage availability change, not repeatedly from the failure callback.
-
-Session progress is checkpointed for restoration across launches.
-After a checkpoint failure, the live session retains unsaved progress; retrying it preserves completed batches and may emit no new files.
-If the app terminates first, restoration may repeat batches whose completion was not saved.
-Generated files and upload jobs are separate from that checkpoint and must be retained by the host.
-Deduplicate HealthKit samples by participant ID and sample UUID.
-Use `forceSessionReset: true` only for an intentional restart.
+Use `triggerHealthExport(forceSessionReset: true)` to start over or change the export configuration.
+Reset reports cancellation for an active attempt; its file stream may still be draining.
 
 ### Sample types
 
-`HealthExportConfiguration.defaultSampleTypes` contains eight types.
+The default study sample types are listed below. Pass `sampleTypes` to override them; types Grove cannot represent fail startup.
 
 | Protocol measure | HealthKit type |
 |---|---|
@@ -171,27 +146,10 @@ Use `forceSessionReset: true` only for an intentional restart.
 | Time in daylight | `HKQuantityType(.timeInDaylight)` |
 
 
-Apply `.oneSecStanfordStudy()` to the root of your SwiftUI hierarchy:
-
-```swift
-WindowGroup {
-    ContentView()
-        .oneSecStanfordStudy()
-}
-```
-
-On iOS 18 and newer, access study state, the survey sheet and export retries through `OneSecStanfordStudyModule`:
-
-```swift
-@Environment(OneSecStanfordStudyModule.self) private var oneSec
-```
-
-
 ## Testing
 
-The package includes unit tests in `Tests/OneSecStanfordStudyTests` and a consolidated iOS UI test app in `Tests/UITests`.
-
-Run the UI test app with the `TestApp` scheme in `Tests/UITests/UITests.xcodeproj`. The test app has an iOS 15 deployment target. On iOS 15 and iOS 16, the wrapper launch test validates that initialization and `.oneSecStanfordStudy()` are no-ops. On iOS 18 and newer, the same app validates the active integration and the web view alert/confirm hooks.
+Unit tests are in `Tests/OneSecStanfordStudyTests`.
+Run UI tests with the `TestApp` scheme in `Tests/UITests/UITests.xcodeproj`; they cover app launch and web view alerts and confirmations.
 
 ## Contributing
 

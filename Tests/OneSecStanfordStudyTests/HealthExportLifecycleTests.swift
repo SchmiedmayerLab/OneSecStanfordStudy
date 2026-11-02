@@ -13,6 +13,33 @@ import Observation
 import Testing
 
 @Suite @MainActor struct HealthExportLifecycleTests {
+    @Test @available(iOS 18, *)
+    func enrollmentResetPersistsWithoutChangingExportState() throws {
+        let suiteName = "HealthExportLifecycleTests.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let preferences = LocalPreferencesStore(defaults: defaults)
+        let stateKey = LocalPreferenceKey<OneSecStanfordStudyModule.State>(
+            .init("state", in: .custom("edu.stanford.SpeziOneSec")), default: .available
+        )
+        let exportKey = LocalPreferenceKey<Bool>(
+            .init("didInitiateBulkExport", in: .custom("edu.stanford.SpeziOneSec")), default: false
+        )
+        let recorder = CallbackRecorder()
+        let module = OneSecStanfordStudyModule(healthExportConfig: recorder.configuration, preferences: preferences)
+        module.updateState(.completed)
+        preferences[exportKey] = true
+
+        module.updateState(.available)
+
+        #expect(module.state == .available)
+        let restoredPreferences = LocalPreferencesStore(defaults: try #require(UserDefaults(suiteName: suiteName)))
+        #expect(restoredPreferences[stateKey] == .available)
+        #expect(restoredPreferences[exportKey])
+        #expect(recorder.startedIDs.isEmpty)
+        #expect(recorder.results.isEmpty)
+    }
+
     @Test(.timeLimit(.minutes(1))) @available(iOS 18, *)
     func streamAndResultShareAttemptID() async throws {
         let recorder = CallbackRecorder()
@@ -129,6 +156,9 @@ import Testing
 
     @Test(.timeLimit(.minutes(1))) @available(iOS 18, *)
     func startupFailureReportsErrorWithoutOpeningStream() async throws {
+        let suiteName = "HealthExportLifecycleTests.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
         let recorder = CallbackRecorder()
         let config = HealthExportConfiguration(
             destination: try #require(URL(string: "https://example.invalid/export")),
@@ -136,7 +166,7 @@ import Testing
             didStartLocalExport: recorder.configuration.didStartLocalExport,
             didFinishLocalExport: recorder.configuration.didFinishLocalExport
         )
-        let module = OneSecStanfordStudyModule(healthExportConfig: config)
+        let module = OneSecStanfordStudyModule(healthExportConfig: config, preferences: LocalPreferencesStore(defaults: defaults))
         await #expect(throws: HealthExportConfiguration.ValidationError.self) {
             try await module.triggerHealthExport()
         }

@@ -57,6 +57,19 @@ import Testing
     }
 
     @Test @available(iOS 18, *)
+    func rejectsSampleTypesNotSupportedByExporter() throws {
+        let documentType = try #require(HKObjectType.documentType(forIdentifier: .CDA))
+        let config = HealthExportConfiguration(
+            destination: URL(fileURLWithPath: "/tmp/export"),
+            sampleTypes: [HKQuantityType(.stepCount), documentType],
+            timeRange: Date(timeIntervalSince1970: 0)..<Date(timeIntervalSince1970: 1),
+            didStartLocalExport: { _, _ in }, didFinishLocalExport: { _ in }
+        )
+        #expect(documentType.sampleType == nil)
+        #expect(throws: HealthExportConfiguration.ValidationError.self) { try config.validate() }
+    }
+
+    @Test @available(iOS 18, *)
     func compressedExportPreservesDSTInstantsAndSampleID() throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -111,10 +124,22 @@ import Testing
     }
 
     @Test(arguments: [
+        "https://ONE-SEC.APP/survey-callback/success",
+        "https://one-sec.app:443/survey-callback/success",
+        "https://one-sec.app:444/survey-callback/success",
+        "https://user@one-sec.app/survey-callback/success",
+        "https://one-sec.app/survey-callback/success/",
+        "https://one-sec.app/survey-callback/success?token=example#complete"
+    ])
+    func acceptsCallbackURLVariants(_ address: String) throws {
+        #expect(StudySurveyCallback(url: try #require(URL(string: address))) == .success)
+    }
+
+    @Test(arguments: [
         "https://one-sec.app/help", "https://one-sec.app/survey-callback/success-extra",
         "https://one-sec.app/other/survey-callback/success", "http://one-sec.app/survey-callback/success",
-        "https://one-sec.app.example.org/survey-callback/success", "https://one-sec.app:444/survey-callback/success",
-        "https://user@one-sec.app/survey-callback/success", "https://one-sec.app/survey-callback/unknown"
+        "https://one-sec.app.example.org/survey-callback/success", "https://one-sec.app@other.example/survey-callback/success",
+        "https://one-sec.app/survey-callback/unknown"
     ])
     func rejectsOtherNavigation(_ address: String) throws {
         #expect(StudySurveyCallback(url: try #require(URL(string: address))) == nil)

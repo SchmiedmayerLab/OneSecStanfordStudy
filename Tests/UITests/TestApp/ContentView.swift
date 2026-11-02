@@ -20,6 +20,9 @@ struct ContentView: View {
                     Text("OneSecStanfordStudy active")
                         .accessibilityIdentifier("integration-status-active")
                     StudyButton()
+                    Button("Reset Study State") {
+                        oneSecStanfordStudy.updateState(.available)
+                    }
                     Button("Trigger Health Export") {
                         Task {
                             do {

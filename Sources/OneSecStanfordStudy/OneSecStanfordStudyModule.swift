@@ -28,6 +28,7 @@ import UIKit
 ///
 /// ### Instance Methods
 /// - ``makeOneSecStanfordStudySheet()``
+/// - ``updateState(_:)``
 /// - ``triggerHealthExport(forceSessionReset:)``
 @available(iOS 18, *)
 @Observable
@@ -110,7 +111,9 @@ public final class OneSecStanfordStudyModule: Module, EnvironmentAccessible {
         }
     }
 
-    func updateState(_ newState: State) {
+    /// Updates and persists the survey state. Use `.available` to reset enrollment for testing.
+    /// This does not cancel or reset an export, delete exported files, or change upload state.
+    public func updateState(_ newState: State) {
         if newState != state {
             prefsStore[.oneSecStanfordStudyState] = newState
         }
@@ -135,6 +138,8 @@ public final class OneSecStanfordStudyModule: Module, EnvironmentAccessible {
 
     private func startHealthExport(forceSessionReset: Bool) async throws {
         let attempt = HealthExportAttempt(configuration: healthExportConfig)
+        // Retain the request even if validation, authorization, or session setup fails.
+        prefsStore[.didInitiateBulkExport] = true
         do {
             try Task.checkCancellation()
             try healthExportConfig.validate()
@@ -151,9 +156,7 @@ public final class OneSecStanfordStudyModule: Module, EnvironmentAccessible {
                     try await reset()
                 }
             }
-            if !fileManager.itemExists(at: healthExportConfig.destination) {
-                try fileManager.createDirectory(at: healthExportConfig.destination, withIntermediateDirectories: true)
-            }
+            try fileManager.createDirectory(at: healthExportConfig.destination, withIntermediateDirectories: true)
             try await healthKit.askForAuthorization(for: .init(read: healthExportConfig.sampleTypes))
             try Task.checkCancellation()
             let session = try await healthExportSession()
@@ -167,7 +170,6 @@ public final class OneSecStanfordStudyModule: Module, EnvironmentAccessible {
                 trackCompletion(of: session, attempt: previousAttempt)
             }
             let stream = try session.start(retryFailedBatches: true, concurrencyLevel: .limit(4))
-            prefsStore[.didInitiateBulkExport] = true
             activeExportAttempt = attempt
             attempt.start(files: AnyAsyncSequence(stream.compactMap(\.self)))
             trackCompletion(of: session, attempt: attempt)
