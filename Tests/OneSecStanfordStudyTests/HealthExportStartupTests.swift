@@ -59,19 +59,22 @@ import Testing
         }
         #expect(starts == 0)
         #expect(results.count == 1)
-        guard case .failedToStart(let reportedError) = try #require(results.first).outcome else {
-            Issue.record("Expected a startup failure")
-            return
-        }
-        let error = try #require(thrownError)
-        #expect((reportedError as NSError).domain == error.domain)
-        #expect((reportedError as NSError).code == error.code)
+        expectStartupFailure(try #require(results.first), matching: try #require(thrownError))
         #expect(try Data(contentsOf: blocker) == Data("existing file".utf8))
         #expect(try storage.load(checkpoint) == (forceReset ? nil : existingCheckpoint))
         let restorationKey = LocalPreferenceKey<Bool>(
             .init("didInitiateBulkExport", in: .custom("edu.stanford.SpeziOneSec")), default: false
         )
         #expect(LocalPreferencesStore(defaults: defaults)[restorationKey])
+    }
+
+    private func expectStartupFailure(_ result: HealthExportResult, matching error: NSError) {
+        guard case .failedToStart(let reportedError) = result.outcome else {
+            Issue.record("Expected a startup failure")
+            return
+        }
+        #expect((reportedError as NSError).domain == error.domain)
+        #expect((reportedError as NSError).code == error.code)
     }
 
     @Test(.timeLimit(.minutes(1))) @available(iOS 18, *)
