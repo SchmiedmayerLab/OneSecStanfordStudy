@@ -235,7 +235,9 @@ extension WebViewImpl {
         // MARK: WKNavigationDelegate
 
         func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction) async -> WKNavigationActionPolicy {
-            switch await parent.config.shouldNavigate(navigationAction.request) {
+            // Subframes must not change enrollment state or dismiss the survey.
+            guard navigationAction.targetFrame?.isMainFrame == true else { return .allow }
+            return switch await parent.config.shouldNavigate(navigationAction.request) {
             case true:
                 navigationAction.shouldPerformDownload ? .download : .allow
             case false:
