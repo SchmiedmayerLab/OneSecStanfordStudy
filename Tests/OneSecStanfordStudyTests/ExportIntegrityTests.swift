@@ -3,10 +3,10 @@
 // SPDX-License-Identifier: MIT
 //
 
-import FHIRModelsExtensions
 import Foundation
-import HealthKit
+import GroveFHIRContract
 import GroveHealthKitFHIR
+import HealthKit
 import ModelsR4
 import GroveFoundation
 import GroveHealthKit
@@ -70,7 +70,7 @@ import Testing
     }
 
     @Test @available(iOS 18, *)
-    func compressedExportPreservesDSTInstantsAndSampleID() throws {
+    func compressedBundlePreservesDSTInstantsAndSampleID() async throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: directory) }
@@ -80,25 +80,86 @@ import Testing
             type: HKQuantityType(.stepCount), quantity: HKQuantity(unit: .count(), doubleValue: 12),
             start: start, end: end, metadata: [HKMetadataKeyTimeZone: "Europe/Berlin"]
         )
-        let processor = HKSampleToFHIRProcessor(outputDirectory: directory)
-        let file = try #require(try processor.process([sample], of: SampleType.stepCount))
+        let skippedSamples = SkippedSamplesReport(directory: directory)
+        let processor = HKSampleToFHIRProcessor(
+            outputDirectory: directory,
+            exporter: try Self.exporter(participantID: "participant-1"),
+            skippedSamples: skippedSamples
+        )
+        let file = try #require(try await processor.process([sample], of: SampleType.stepCount))
+        #expect(file.lastPathComponent.hasPrefix("HKQuantityTypeIdentifierStepCount_"))
+        #expect(file.lastPathComponent.hasSuffix(".json.zlib"))
         let data = try Data(contentsOf: file).decompressed(using: Zlib.self)
-        let observations = try JSONDecoder().decode([Observation].self, from: data)
+        let graph = try ExchangeGraph(validating: data, kind: .active)
+        let resources = graph.bundle.entry?.compactMap { $0.resource?.get() } ?? []
+        let observations = resources.compactMap { $0 as? Observation }
         let observation = try #require(observations.first)
         #expect(observations.count == 1)
-        let revision = try #require(observation.extensions(for: FHIRExtensionURL.sourceRevision.r4).first)
-        let sourceURL = FHIRExtensionURL.sourceRevision.appending(component: "source")
-        let source = try #require(revision.extensions(for: sourceURL).first)
-        #expect(source.extensions(for: sourceURL.appending(component: "name")).isEmpty)
-        #expect(!source.extensions(for: sourceURL.appending(component: "bundleIdentifier")).isEmpty)
-        #expect(observation.id?.value?.string == sample.uuid.uuidString)
+        #expect(observation.subject?.identifier?.value?.value?.string == "participant-1")
+        #expect(observation.identifier?.contains { $0.value?.value?.string == sample.uuid.uuidString.lowercased() } == true)
         guard case .period(let period) = observation.effective else {
             Issue.record("Expected a period")
             return
         }
         #expect(try #require(period.start?.value).asNSDate() == start)
         #expect(try #require(period.end?.value).asNSDate() == end)
-        #expect(try processor.process([HKQuantitySample](), of: SampleType.stepCount) == nil)
+        #expect(try await processor.process([HKQuantitySample](), of: SampleType.stepCount) == nil)
+        #expect(skippedSamples.existingFile == nil)
+    }
+
+    @Test @available(iOS 18, *)
+    func skippedSamplesAccumulateInOneReport() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let report = SkippedSamplesReport(directory: directory)
+        try report.add(["code-b": 2, "code-a": 1], sampleType: "HKQuantityTypeIdentifierStepCount")
+        // A later launch continues the same file.
+        try SkippedSamplesReport(directory: directory).add(["code-b": 3], sampleType: "HKQuantityTypeIdentifierStepCount")
+        let file = try #require(report.existingFile)
+        #expect(file.lastPathComponent == "skipped-samples.json")
+        let entries = try JSONDecoder().decode([SkippedSamplesReport.Entry].self, from: Data(contentsOf: file))
+        #expect(entries == [
+            .init(sampleType: "HKQuantityTypeIdentifierStepCount", diagnosticCode: "code-a", count: 1),
+            .init(sampleType: "HKQuantityTypeIdentifierStepCount", diagnosticCode: "code-b", count: 5)
+        ])
+        report.remove()
+        #expect(report.existingFile == nil)
+    }
+
+    @Test @available(iOS 18, *)
+    func recordIdentityFollowsIdentityAndParticipant() async throws {
+        let sample = HKQuantitySample(
+            type: HKQuantityType(.stepCount), quantity: HKQuantity(unit: .count(), doubleValue: 12),
+            start: Date(timeIntervalSince1970: 0), end: Date(timeIntervalSince1970: 60)
+        )
+        let identity = HealthExportIdentity()
+        func sourceRecord(_ identity: HealthExportIdentity, participantID: String) async throws -> BusinessIdentifier {
+            var records: [ExchangeRecord] = []
+            try await Self.exporter(identity, participantID: participantID).export([sample]) { export in
+                if let record = export.record {
+                    records.append(record)
+                }
+            }
+            return try #require(records.first).sourceRecord
+        }
+        let first = try await sourceRecord(identity, participantID: "participant-1")
+        // Another device that received the identity through iCloud Keychain decodes the same value.
+        let synchronized = try JSONDecoder().decode(HealthExportIdentity.self, from: JSONEncoder().encode(identity))
+        #expect(try await sourceRecord(synchronized, participantID: "participant-1") == first)
+        #expect(try await sourceRecord(identity, participantID: "participant-2") != first)
+        #expect(try await sourceRecord(HealthExportIdentity(), participantID: "participant-1") != first)
+    }
+
+    @available(iOS 18, *)
+    private static func exporter(
+        _ identity: HealthExportIdentity = HealthExportIdentity(),
+        participantID: String
+    ) throws -> HealthKitFHIRExporter {
+        try identity.exporter(
+            participantID: participantID,
+            application: ApplicationDevice(name: "Tests", bundleIdentifier: "edu.stanford.OneSecStanfordStudy.tests", version: "1")
+        )
     }
 
     @Test(arguments: [

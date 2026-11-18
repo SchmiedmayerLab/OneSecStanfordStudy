@@ -23,12 +23,12 @@ Supports iOS 15 and newer. Study features require iOS 18; initialization and the
 
 ## Installation
 
-Use a branch dependency for this package. Its Grove dependency uses the iOS 15 configuration with optional traits disabled:
+Use a branch dependency for this package. Its Grove dependency is pinned to a commit that uses the iOS 15 configuration with optional traits disabled:
 
 ```swift
 .package(
     url: "https://github.com/SchmiedmayerLab/Grove.git",
-    branch: "feature/healthkit-export-integrity",
+    revision: "d34149c068e4e5f00ff5c577818690998327fe9e",
     traits: []
 )
 ```
@@ -92,13 +92,26 @@ On iOS 18 and newer, access the module through the environment:
 @Environment(OneSecStanfordStudyModule.self) private var oneSec
 ```
 
-Use `makeOneSecStanfordStudySheet()` to present the survey.
+Set `surveyUrl` and `participantID`, then use `makeOneSecStanfordStudySheet()` to present the survey.
+`participantID` is the study's identifier of the participant, such as the REDCap record ID. An export started without it fails with `OneSecStanfordStudyModule.HealthExportError.missingParticipantID`.
 Use `updateState(.available)` to reset enrollment in TestFlight. Export progress and files are kept.
 Call module methods on `MainActor`.
 
 ### Exports
 
 The package writes HealthKit data to local files. Your app uploads them and tracks backend receipts.
+
+Each file holds one batch as a zlib-compressed FHIR R4 Bundle in the [Grove exchange format](https://grovealliance.org/fhir/healthkit/).
+The subject of each sample's resource is the participant, identified by `participantID` under `https://schmiedmayerlab.stanford.edu/fhir/onesec/identifiers/participant`.
+The resource of each sample carries its lowercase HealthKit UUID as an identifier whose system ends in `/healthkit-native-record`. The system is specific to the participant's HealthKit store.
+The export leaves out the name of the source that wrote a sample, which can be a name a person gave a device, and the name, serial number, UDI and local identifier of the recording device.
+
+Grove's opaque identifiers are derived from a random key that the package creates on first use and stores in the iCloud-synchronized keychain.
+The key survives a reinstall. With iCloud Keychain enabled, the participant's devices share it once it has synchronized, and a sample then gets the same source-record identifier on each of them.
+
+Samples that Grove cannot convert are skipped. A batch without convertible samples produces no file.
+The package counts skipped samples by sample type and Grove diagnostic code in `skipped-samples.json` in the export directory. The file holds no sample values.
+If it exists, the file stream yields it last, after the batch files of each attempt. The counts cover the whole session, and a batch that is repeated is counted again.
 
 - `didStartLocalExport(attemptID, files)` provides the file stream. Consume it in an app-owned task and save upload jobs as files arrive.
 - `didFinishLocalExport(result)` reports the local outcome. It can arrive before file consumption or uploads finish, or without a start callback if startup fails.
@@ -124,10 +137,11 @@ Callbacks are not saved or replayed after app termination, and starting an alrea
 Unfinished exports retry on the next launch, including failed starts. To retry sooner, resolve the error and call `triggerHealthExport()`.
 There is no automatic retry loop. Storage errors may require freeing space, waiting for availability or correcting permissions; invalid configuration needs fixing.
 
-A normal retry keeps completed batches and the original sample types and date range.
+A normal retry keeps completed batches and the original participant ID, sample types and date range.
 After a failed progress save, restarting the app may repeat batches. Deduplicate samples by participant ID and HealthKit UUID.
 
-Use `triggerHealthExport(forceSessionReset: true)` to start over or change the export configuration.
+Use `triggerHealthExport(forceSessionReset: true)` to start over or change the participant ID or export configuration.
+An export that a package version without `participantID` left unfinished starts over on the next `triggerHealthExport()` after `participantID` is set.
 Reset reports cancellation for an active attempt; its file stream may still be draining.
 
 ### Sample types

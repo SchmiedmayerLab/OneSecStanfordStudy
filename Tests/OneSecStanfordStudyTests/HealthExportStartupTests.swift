@@ -40,6 +40,7 @@ import Testing
             didFinishLocalExport: { results.append($0) }
         )
         let module = OneSecStanfordStudyModule(healthExportConfig: config, preferences: LocalPreferencesStore(defaults: defaults))
+        module.participantID = "participant-1"
         withDependencyResolution(standard: ExportTestStandard()) {
             storage
             HealthKit()
@@ -66,6 +67,93 @@ import Testing
             .init("didInitiateBulkExport", in: .custom("edu.stanford.SpeziOneSec")), default: false
         )
         #expect(LocalPreferencesStore(defaults: defaults)[restorationKey])
+    }
+
+    @Test(.timeLimit(.minutes(1))) @available(iOS 18, *)
+    func exportKeepsTheParticipantItStartedWith() async throws {
+        let namespace = StorageNamespace.custom("HealthExportStartupTests.\(UUID().uuidString)")
+        let blocker = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try Data().write(to: blocker)
+        defer {
+            try? FileManager.default.removeItem(at: blocker)
+            try? FileManager.default.removeItem(at: namespace.containerURL())
+        }
+        let suiteName = "HealthExportStartupTests.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let preferences = LocalPreferencesStore(defaults: defaults)
+        // Startup fails at the destination, after the participant is resolved and before HealthKit is asked.
+        let config = HealthExportConfiguration(
+            destination: blocker.appendingPathComponent("export"),
+            sampleTypes: [HKQuantityType(.stepCount)],
+            timeRange: Date(timeIntervalSince1970: 0)..<Date(timeIntervalSince1970: 1),
+            didStartLocalExport: { _, _ in }, didFinishLocalExport: { _ in }
+        )
+        let module = OneSecStanfordStudyModule(healthExportConfig: config, preferences: preferences)
+        withDependencyResolution(standard: ExportTestStandard()) {
+            LocalStorage(namespace: namespace)
+            HealthKit()
+            BulkHealthExporter()
+            module
+        }
+        let participantKey = LocalPreferenceKey<String?>(.init("exportParticipantID", in: .custom("edu.stanford.SpeziOneSec")))
+
+        await #expect(throws: OneSecStanfordStudyModule.HealthExportError.missingParticipantID) {
+            try await module.triggerHealthExport()
+        }
+        #expect(preferences[participantKey] == nil)
+        module.participantID = "participant-1"
+        await #expect(throws: CocoaError.self) { try await module.triggerHealthExport() }
+        #expect(preferences[participantKey] == "participant-1")
+        module.participantID = "participant-2"
+        await #expect(throws: CocoaError.self) { try await module.triggerHealthExport() }
+        #expect(preferences[participantKey] == "participant-1")
+        await #expect(throws: CocoaError.self) { try await module.triggerHealthExport(forceSessionReset: true) }
+        #expect(preferences[participantKey] == "participant-2")
+        module.participantID = nil
+        await #expect(throws: CocoaError.self) { try await module.triggerHealthExport() }
+        #expect(preferences[participantKey] == "participant-2")
+    }
+
+    @Test(.timeLimit(.minutes(1))) @available(iOS 18, *)
+    func exportLeftUnfinishedWithoutParticipantStartsOver() async throws {
+        let namespace = StorageNamespace.custom("HealthExportStartupTests.\(UUID().uuidString)")
+        let storage = LocalStorage(namespace: namespace)
+        let blocker = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try Data().write(to: blocker)
+        defer {
+            try? FileManager.default.removeItem(at: blocker)
+            try? FileManager.default.removeItem(at: namespace.containerURL())
+        }
+        let suiteName = "HealthExportStartupTests.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let preferences = LocalPreferencesStore(defaults: defaults)
+        preferences[LocalPreferenceKey<Bool>(.init("didInitiateBulkExport", in: .custom("edu.stanford.SpeziOneSec")), default: false)] = true
+        let config = HealthExportConfiguration(
+            destination: blocker.appendingPathComponent("export"),
+            sampleTypes: [HKQuantityType(.stepCount)],
+            timeRange: Date(timeIntervalSince1970: 0)..<Date(timeIntervalSince1970: 1),
+            didStartLocalExport: { _, _ in }, didFinishLocalExport: { _ in }
+        )
+        let module = OneSecStanfordStudyModule(healthExportConfig: config, preferences: preferences)
+        withDependencyResolution(standard: ExportTestStandard()) {
+            storage
+            HealthKit()
+            BulkHealthExporter()
+            module
+        }
+        let checkpoint = LocalStorageKey<Data>("HealthKit.bulkExport.edu.stanford.OneSecStanfordStudy", setting: .unencrypted())
+        try storage.store(Data("checkpoint of an earlier version".utf8), for: checkpoint)
+
+        // Without a participant the earlier session is left alone.
+        await #expect(throws: OneSecStanfordStudyModule.HealthExportError.missingParticipantID) {
+            try await module.triggerHealthExport()
+        }
+        #expect(try storage.load(checkpoint) != nil)
+        module.participantID = "participant-1"
+        await #expect(throws: CocoaError.self) { try await module.triggerHealthExport() }
+        #expect(try storage.load(checkpoint) == nil)
     }
 
     private func expectStartupFailure(_ result: HealthExportResult, matching error: NSError) {
@@ -116,6 +204,18 @@ import Testing
 
 @available(iOS 18, *)
 private actor ExportTestStandard: Standard, HealthKitConstraint {
-    func handleNewSamples<Sample>(_ addedSamples: some Collection<Sample>, ofType sampleType: SampleType<Sample>) async {}
-    func handleDeletedObjects<Sample>(_ deletedObjects: some Collection<HKDeletedObject>, ofType sampleType: SampleType<Sample>) async {}
+    func handleNewSamples<Sample>(
+        _ addedSamples: some Collection<Sample> & Sendable,
+        ofType sampleType: SampleType<Sample>
+    ) async -> HealthKitAnchorCommitAction? {
+        nil
+    }
+
+    func handleDeletedObjects<Sample>(
+        _ deletedObjects: some Collection<HKDeletedObject> & Sendable,
+        ofType sampleType: SampleType<Sample>,
+        deletedAfter: Date?
+    ) async -> HealthKitAnchorCommitAction? {
+        nil
+    }
 }

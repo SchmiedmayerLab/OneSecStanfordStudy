@@ -15,6 +15,8 @@ final class HealthExportAttempt {
     private var didStart = false
     private(set) var didFinish = false
     private var isResetting = false
+    /// Whether a session reset ended this attempt, or is about to.
+    private(set) var wasReset = false
     private var deferredCompletion: (@MainActor () -> Void)?
 
     init(configuration: HealthExportConfiguration) {
@@ -70,6 +72,7 @@ final class HealthExportAttempt {
 
     func resetSession(_ reset: @MainActor () async throws -> Void) async throws {
         isResetting = true
+        wasReset = true
         defer {
             isResetting = false
             let completion = deferredCompletion

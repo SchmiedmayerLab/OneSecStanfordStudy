@@ -9,6 +9,7 @@
 // swiftlint:disable file_types_order
 
 public import Grove
+private import GroveFHIRContract
 import GroveFoundation
 private import GroveHealthKit
 import GroveHealthKitBulkExport
@@ -25,6 +26,7 @@ import UIKit
 /// ### Instance Properties
 /// - ``state``
 /// - ``surveyUrl``
+/// - ``participantID``
 ///
 /// ### Instance Methods
 /// - ``makeOneSecStanfordStudySheet()``
@@ -34,6 +36,11 @@ import UIKit
 @Observable
 @MainActor
 public final class OneSecStanfordStudyModule: Module, EnvironmentAccessible {
+    public enum HealthExportError: Error {
+        /// The export was started before ``participantID`` was set.
+        case missingParticipantID
+    }
+
     public enum State: Int, Hashable, Codable, Sendable {
         /// The study is not available for this user.
         /// This may occur if the user has been deemed ineligible (e.g., underage)
@@ -54,6 +61,12 @@ public final class OneSecStanfordStudyModule: Module, EnvironmentAccessible {
     ///
     /// The host app constructs this URL from the survey and the participant's token obtained from REDCap.
     public var surveyUrl: URL?
+
+    /// The study's identifier of the participant, stated as the subject of every exported record.
+    ///
+    /// Set it together with ``surveyUrl``, before the survey is presented. The export keeps the identifier
+    /// it started with across retries and app launches; `triggerHealthExport(forceSessionReset: true)` adopts a new one.
+    public var participantID: String?
 
     /// The current survey state.
     public private(set) var state: State = .unavailable
@@ -138,11 +151,14 @@ public final class OneSecStanfordStudyModule: Module, EnvironmentAccessible {
 
     private func startHealthExport(forceSessionReset: Bool) async throws {
         let attempt = HealthExportAttempt(configuration: healthExportConfig)
+        // An export that a version without participant IDs left unfinished starts over, so every file states the participant.
+        let forceSessionReset = forceSessionReset || (prefsStore[.didInitiateBulkExport] && prefsStore[.exportParticipantID] == nil)
         // Retain the request even if validation, authorization, or session setup fails.
         prefsStore[.didInitiateBulkExport] = true
         do {
             try Task.checkCancellation()
             try healthExportConfig.validate()
+            let participantID = try exportParticipantID(forceSessionReset: forceSessionReset)
             if forceSessionReset {
                 let reset: @MainActor () async throws -> Void = {
                     try await self.bulkExporter.deleteSessionRestorationInfo(for: .oneSecStanfordStudy)
@@ -156,10 +172,16 @@ public final class OneSecStanfordStudyModule: Module, EnvironmentAccessible {
                     try await reset()
                 }
             }
+            let skippedSamples = SkippedSamplesReport(directory: healthExportConfig.destination)
+            if forceSessionReset {
+                skippedSamples.remove()
+            }
+            // Saved only after a reset succeeded, so a session that is still restorable keeps its participant.
+            prefsStore[.exportParticipantID] = participantID
             try fileManager.createDirectory(at: healthExportConfig.destination, withIntermediateDirectories: true)
             try await healthKit.askForAuthorization(for: .init(read: healthExportConfig.sampleTypes))
             try Task.checkCancellation()
-            let session = try await healthExportSession()
+            let session = try await healthExportSession(participantID: participantID, skippedSamples: skippedSamples)
             try Task.checkCancellation()
             guard session.state != .running else { return }
             if clearRestorationFlagIfCompleted(session) {
@@ -171,7 +193,7 @@ public final class OneSecStanfordStudyModule: Module, EnvironmentAccessible {
             }
             let stream = try session.start(retryFailedBatches: true, concurrencyLevel: .limit(4))
             activeExportAttempt = attempt
-            attempt.start(files: AnyAsyncSequence(stream.compactMap(\.self)))
+            attempt.start(files: AnyAsyncSequence(Self.files(stream, of: attempt, followedBy: skippedSamples)))
             trackCompletion(of: session, attempt: attempt)
         } catch {
             if error is CancellationError {
@@ -193,15 +215,57 @@ public final class OneSecStanfordStudyModule: Module, EnvironmentAccessible {
         return true
     }
 
+    /// The participant the export is about: the one it started with, unless a reset adopts the current one.
+    private func exportParticipantID(forceSessionReset: Bool) throws -> String {
+        let stored = prefsStore[.exportParticipantID]
+        let current = participantID.flatMap { $0.isEmpty ? nil : $0 }
+        guard let participantID = forceSessionReset ? current ?? stored : stored ?? current else {
+            throw HealthExportError.missingParticipantID
+        }
+        return participantID
+    }
+
+    /// The batch files, followed by the report of skipped samples if any sample was skipped.
+    ///
+    /// A reset removes the report, so an attempt that a reset ended yields none.
+    private static func files(
+        _ batches: AsyncStream<URL?>,
+        of attempt: HealthExportAttempt,
+        followedBy skippedSamples: SkippedSamplesReport
+    ) -> AsyncStream<URL> {
+        AsyncStream { continuation in
+            let task = Task {
+                for await file in batches {
+                    if let file {
+                        continuation.yield(file)
+                    }
+                }
+                if !attempt.wasReset, let report = skippedSamples.existingFile {
+                    continuation.yield(report)
+                }
+                continuation.finish()
+            }
+            continuation.onTermination = { _ in task.cancel() }
+        }
+    }
+
     /// Obtains the bulk health export session.
-    private func healthExportSession() async throws -> some BulkExportSession<HKSampleToFHIRProcessor> {
-        try await bulkExporter.session(
+    private func healthExportSession(
+        participantID: String,
+        skippedSamples: SkippedSamplesReport
+    ) async throws -> some BulkExportSession<HKSampleToFHIRProcessor> {
+        let exporter = try HealthExportIdentity.load().exporter(participantID: participantID, application: ApplicationDevice(bundle: .main))
+        return try await bulkExporter.session(
             withId: .oneSecStanfordStudy,
             for: SampleTypesCollection(healthExportConfig.sampleTypes.compactMap { $0.sampleType }),
             startDate: .absolute(healthExportConfig.timeRange.lowerBound),
             endDate: healthExportConfig.timeRange.upperBound,
             batchSize: .automatic,
-            using: HKSampleToFHIRProcessor(outputDirectory: healthExportConfig.destination)
+            using: HKSampleToFHIRProcessor(
+                outputDirectory: healthExportConfig.destination,
+                exporter: exporter,
+                skippedSamples: skippedSamples
+            )
         )
     }
 
@@ -246,8 +310,20 @@ private final class OneSecStanfordStudyAppDelegate: GroveAppDelegate {
 
 @available(iOS 18, *)
 private actor OneSecStanfordStudyStandard: Standard, HealthKitConstraint {
-    func handleNewSamples<Sample>(_ addedSamples: some Collection<Sample>, ofType sampleType: SampleType<Sample>) async {}
-    func handleDeletedObjects<Sample>(_ deletedObjects: some Collection<HKDeletedObject>, ofType sampleType: SampleType<Sample>) async {}
+    func handleNewSamples<Sample>(
+        _ addedSamples: some Collection<Sample> & Sendable,
+        ofType sampleType: SampleType<Sample>
+    ) async -> HealthKitAnchorCommitAction? {
+        nil
+    }
+
+    func handleDeletedObjects<Sample>(
+        _ deletedObjects: some Collection<HKDeletedObject> & Sendable,
+        ofType sampleType: SampleType<Sample>,
+        deletedAfter: Date?
+    ) async -> HealthKitAnchorCommitAction? {
+        nil
+    }
 }
 
 // MARK: Utils
@@ -273,4 +349,5 @@ extension LocalPreferenceKeys {
         .init("didInitiateBulkExport", in: .oneSecStudy),
         default: false
     )
+    fileprivate static let exportParticipantID = LocalPreferenceKey<String?>(.init("exportParticipantID", in: .oneSecStudy))
 }

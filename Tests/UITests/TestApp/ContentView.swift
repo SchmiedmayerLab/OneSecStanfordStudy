@@ -24,6 +24,7 @@ struct ContentView: View {
                         oneSecStanfordStudy.updateState(.available)
                     }
                     Button("Trigger Health Export") {
+                        oneSecStanfordStudy.participantID = "test-participant"
                         Task {
                             do {
                                 try await oneSecStanfordStudy.triggerHealthExport(forceSessionReset: true)
