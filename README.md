@@ -25,14 +25,10 @@ It supports iOS 15 and newer. The study runs on iOS 18 and newer; on earlier ver
 
 ## Installation
 
-Add the package with a branch dependency, and add Grove with the pin below. The pin selects Grove's iOS 15 configuration and keeps its optional traits disabled:
+Add the package with a branch dependency. It depends on a pinned Grove commit, so it cannot be used as a versioned dependency:
 
 ```swift
-.package(
-    url: "https://github.com/SchmiedmayerLab/Grove.git",
-    revision: "d34149c068e4e5f00ff5c577818690998327fe9e",
-    traits: []
-)
+.package(url: "https://github.com/SchmiedmayerLab/OneSecStanfordStudy.git", branch: "main")
 ```
 
 Add the `OneSecStanfordStudy` product to your app target:
