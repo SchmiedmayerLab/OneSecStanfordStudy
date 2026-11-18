@@ -23,24 +23,35 @@ let package = Package(
         .library(name: "OneSecStanfordStudy", targets: ["OneSecStanfordStudy"])
     ],
     dependencies: [
-        .package(url: "https://github.com/SchmiedmayerLab/Spezi.git", exact: "0.1.7")
+        // Pinned until Grove publishes an Apple 15 compatibility release that contains this commit.
+        .package(
+            url: "https://github.com/SchmiedmayerLab/Grove.git",
+            revision: "d34149c068e4e5f00ff5c577818690998327fe9e",
+            traits: []
+        )
     ],
     targets: [
         .target(
             name: "OneSecStanfordStudy",
             dependencies: [
-                .product(name: "Spezi", package: "Spezi"),
-                .product(name: "SpeziFoundation", package: "Spezi"),
-                .product(name: "SpeziHealthKit", package: "Spezi"),
-                .product(name: "SpeziHealthKitBulkExport", package: "Spezi"),
-                .product(name: "HealthKitOnFHIR", package: "Spezi")
+                .product(name: "Grove", package: "Grove"),
+                .product(name: "GroveFHIRContract", package: "Grove"),
+                .product(name: "GroveFoundation", package: "Grove"),
+                .product(name: "GroveHealthKit", package: "Grove"),
+                .product(name: "GroveHealthKitBulkExport", package: "Grove"),
+                .product(name: "GroveHealthKitFHIR", package: "Grove"),
+                .product(name: "GroveKeychainStorage", package: "Grove")
             ],
             swiftSettings: swiftSettings
         ),
         .testTarget(
             name: "OneSecStanfordStudyTests",
             dependencies: [
-                .target(name: "OneSecStanfordStudy")
+                .target(name: "OneSecStanfordStudy"),
+                .product(name: "GroveFHIRContract", package: "Grove"),
+                .product(name: "GroveHealthKitFHIR", package: "Grove"),
+                .product(name: "GroveTesting", package: "Grove"),
+                .product(name: "GroveLocalStorage", package: "Grove")
             ],
             swiftSettings: swiftSettings
         )

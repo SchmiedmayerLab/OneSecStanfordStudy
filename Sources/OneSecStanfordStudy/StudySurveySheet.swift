@@ -6,13 +6,13 @@
 // SPDX-License-Identifier: MIT
 //
 
-private import Spezi
+private import Grove
 import SwiftUI
 
 @available(iOS 18, *)
 struct StudySurveySheet: View {
     @Environment(\.dismiss) private var dismiss
-    @Environment(OneSecStanfordStudy.self) private var oneSecStanfordStudy
+    @Environment(OneSecStanfordStudyModule.self) private var oneSecStanfordStudy
 
     @State private var didCompleteInitialNavigation = false
     @State private var isShowingCancelAlert = false
@@ -133,15 +133,15 @@ struct StudySurveySheet: View {
     }
 
     private func shouldNavigate(_ request: URLRequest) async -> Bool {
-        guard let url = request.url, url.host() == "one-sec.app" else {
+        guard let url = request.url, let callback = StudySurveyCallback(url: url) else {
             return true
         }
-        let path = url.path()
-        if path.contains("survey-callback/success") {
+        switch callback {
+        case .success:
             oneSecStanfordStudy.updateState(.completed)
-        } else if path.contains("survey-callback/noteligible") {
+        case .noteligible:
             oneSecStanfordStudy.updateState(.unavailable)
-        } else if path.contains("survey-callback/waitingforconsent") {
+        case .waitingforconsent:
             oneSecStanfordStudy.updateState(.awaitingParentalConsent)
         }
         isDone = true
@@ -150,6 +150,11 @@ struct StudySurveySheet: View {
     }
 
     private func didNavigate(_ webView: WebViewProxy) async {
+        guard let expectedURL = oneSecStanfordStudy.surveyUrl,
+              let actualURL = webView.url,
+              actualURL.scheme == "https",
+              actualURL.host == expectedURL.host,
+              actualURL.port == expectedURL.port else { return }
         if await webView.pageContainsField(named: "healthkit_export_initiated") {
             oneSecStanfordStudy.updateState(.active)
             await initiateHealthExport()
@@ -158,7 +163,7 @@ struct StudySurveySheet: View {
 
     private func initiateHealthExport() async {
         do {
-            try await oneSecStanfordStudy.triggerHealthExport(forceSessionReset: true)
+            try await oneSecStanfordStudy.triggerHealthExport()
         } catch {
             oneSecStanfordStudy.logger.error("Error initiating bulk health export: \(error)")
             healthExportErrorMessage = error.localizedDescription

@@ -6,52 +6,51 @@
 // SPDX-License-Identifier: MIT
 //
 
-// swiftlint:disable line_length
-
 import Foundation
-private import HealthKitOnFHIR
-private import ModelsR4
-private import SpeziFoundation
-import SpeziHealthKit
-import SpeziHealthKitBulkExport
+import GroveFHIRContract
+private import GroveFoundation
+import GroveHealthKit
+import GroveHealthKitBulkExport
+import GroveHealthKitFHIR
 
 
+/// Writes each batch as one zlib-compressed Grove exchange Bundle and counts the samples Grove cannot convert.
 @available(iOS 18, *)
 struct HKSampleToFHIRProcessor: BatchProcessor {
+    enum ProcessingError: Error {
+        /// The batch holds a second version of a source record, which one Bundle cannot state.
+        case recordDeferred
+    }
+
     let outputDirectory: URL
+    let exporter: HealthKitFHIRExporter
+    let skippedSamples: SkippedSamplesReport
 
-    func process<Sample>(_ samples: consuming [Sample], of sampleType: SampleType<Sample>) throws -> URL? {
-        guard !samples.isEmpty else {
-            return nil
-        }
-        return try storeSamples(samples, of: sampleType)
-    }
-
-    private func storeSamples<Sample>(_ samples: consuming [Sample], of sampleType: SampleType<Sample>) throws -> URL {
-        let resources = try (consume samples).mapIntoResourceProxies()
-        for resource in resources {
-            resource.get(if: ModelsR4::DomainResource.self)?.stripDeviceNameMetadata()
-        }
-        let encoded = try JSONEncoder().encode(consume resources)
-        let compressed = try (consume encoded).compressed(using: Zlib.self)
-        let compressedUrl = outputDirectory.appendingPathComponent("\(sampleType.id)_\(UUID().uuidString).json.zlib")
-        try (consume compressed).write(to: compressedUrl)
-        return compressedUrl
-    }
-}
-
-
-extension ModelsR4::DomainResource {
-    nonisolated(unsafe) private static let sourceRevisionUrl = "https://bdh.stanford.edu/fhir/defs/sourceRevision".asFHIRURIPrimitive()!
-    nonisolated(unsafe) private static let sourceRevisionSourceUrl = "https://bdh.stanford.edu/fhir/defs/sourceRevision/source".asFHIRURIPrimitive()!
-    nonisolated(unsafe) private static let sourceRevisionSourceDeviceNameUrl = "https://bdh.stanford.edu/fhir/defs/sourceRevision/source/name".asFHIRURIPrimitive()!
-    
-    /// Removes the `HKSourceRevision.source.name` metadata field from the resource, if it exists.
-    func stripDeviceNameMetadata() {
-        for sourceRevisionExt in self.extensions(for: Self.sourceRevisionUrl) {
-            for sourceExt in sourceRevisionExt.extensions(for: Self.sourceRevisionSourceUrl) {
-                sourceExt.removeAllExtensions(withUrl: Self.sourceRevisionSourceDeviceNameUrl)
+    func process<Sample>(_ samples: consuming [Sample], of sampleType: SampleType<Sample>) async throws -> URL? {
+        // One file holds the whole batch, so the Bundle has no size cap.
+        var packer = ExchangeBundlePacker(kind: .active, maximumRecords: .max, maximumBytes: .max)
+        var refusals: [String: Int] = [:]
+        try await exporter.export(samples) { export in
+            switch export.outcome {
+            case .record(let record):
+                guard try packer.insert(record) != .deferred else {
+                    throw ProcessingError.recordDeferred
+                }
+            case .refused(let error):
+                // A refusal is deterministic: failing the batch would only repeat it on every retry.
+                refusals[error.diagnostic.code, default: 0] += 1
             }
         }
+        if !refusals.isEmpty {
+            try skippedSamples.add(refusals, sampleType: sampleType.id)
+        }
+        guard packer.recordCount > 0 else {
+            return nil
+        }
+        let bundle = try packer.bundle(packedAt: .now)
+        let compressed = try bundle.json.compressed(using: Zlib.self)
+        let compressedUrl = outputDirectory.appendingPathComponent("\(sampleType.id)_\(UUID().uuidString).json.zlib")
+        try (consume compressed).write(to: compressedUrl, options: .atomic)
+        return compressedUrl
     }
 }
