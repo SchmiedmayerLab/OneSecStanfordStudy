@@ -19,11 +19,13 @@ Stanford study integration module for the one sec app's Digital Interventions Ou
 
 ## Overview
 
-Supports iOS 15 and newer. Study features require iOS 18; initialization and the view modifier do nothing on earlier versions.
+The package adds the study to the one sec app: it presents the enrollment survey in a web view, tracks the participant's study state, and exports the participant's HealthKit data to local files that the app uploads.
+
+It supports iOS 15 and newer. The study runs on iOS 18 and newer; on earlier versions initialization and the view modifier do nothing.
 
 ## Installation
 
-Use a branch dependency for this package. Its Grove dependency is pinned to a commit that uses the iOS 15 configuration with optional traits disabled:
+Add the package with a branch dependency, and add Grove with the pin below. The pin selects Grove's iOS 15 configuration and keeps its optional traits disabled:
 
 ```swift
 .package(
@@ -86,37 +88,29 @@ WindowGroup {
 }
 ```
 
-On iOS 18 and newer, access the module through the environment:
+On iOS 18 and newer, access the module through the environment and call its methods on `MainActor`:
 
 ```swift
 @Environment(OneSecStanfordStudyModule.self) private var oneSec
 ```
 
-Set `surveyUrl` and `participantID`, then use `makeOneSecStanfordStudySheet()` to present the survey.
-`participantID` is the study's identifier of the participant, such as the REDCap record ID. An export started without it fails with `OneSecStanfordStudyModule.HealthExportError.missingParticipantID`.
-Use `updateState(.available)` to reset enrollment in TestFlight. Export progress and files are kept.
-Call module methods on `MainActor`.
+| Member | Use |
+|---|---|
+| `surveyUrl` | The enrollment survey, built from the participant's REDCap token. Set it before presenting the survey. |
+| `participantID` | The study's identifier of the participant, such as the REDCap record ID. Set it with `surveyUrl`. |
+| `makeOneSecStanfordStudySheet()` | Presents the survey. The export starts when the survey reaches its HealthKit step. |
+| `state` | The participant's study state. |
+| `updateState(.available)` | Resets enrollment, for example in TestFlight. Export progress and files are kept. |
+| `triggerHealthExport(forceSessionReset:)` | Starts, resumes or restarts the export. |
 
-### Exports
+### Export callbacks
 
-The package writes HealthKit data to local files. Your app uploads them and tracks backend receipts.
+The package writes HealthKit data to files in `destination`. Your app uploads them and tracks backend receipts.
 
-Each file holds one batch as a zlib-compressed FHIR R4 Bundle in the [Grove exchange format](https://grovealliance.org/fhir/healthkit/).
-The subject of each sample's resource is the participant, identified by `participantID` under `https://schmiedmayerlab.stanford.edu/fhir/onesec/identifiers/participant`.
-The resource of each sample carries its lowercase HealthKit UUID as an identifier whose system ends in `/healthkit-native-record`. The system is specific to the participant's HealthKit store.
-The export leaves out the name of the source that wrote a sample, which can be a name a person gave a device, and the name, serial number, UDI and local identifier of the recording device.
+- `didStartLocalExport(attemptID, files)` provides the file stream. Consume it in an app-owned task and save an upload job for each URL.
+- `didFinishLocalExport(result)` reports the local outcome. It can arrive before file consumption or uploads finish, and without a start callback if startup fails.
 
-Grove's opaque identifiers are derived from a random key that the package creates on first use and stores in the iCloud-synchronized keychain.
-The key survives a reinstall. With iCloud Keychain enabled, the participant's devices share it once it has synchronized, and a sample then gets the same source-record identifier on each of them.
-
-Samples that Grove cannot convert are skipped. A batch without convertible samples produces no file.
-The package counts skipped samples by sample type and Grove diagnostic code in `skipped-samples.json` in the export directory. The file holds no sample values.
-If it exists, the file stream yields it last, after the batch files of each attempt. The counts cover the whole session, and a batch that is repeated is counted again.
-
-- `didStartLocalExport(attemptID, files)` provides the file stream. Consume it in an app-owned task and save upload jobs as files arrive.
-- `didFinishLocalExport(result)` reports the local outcome. It can arrive before file consumption or uploads finish, or without a start callback if startup fails.
-
-Both callbacks run on `MainActor`. Each started attempt gets a new ID; associate it with the participant and upload jobs.
+Both callbacks run on `MainActor`. Each started attempt gets a new ID; associate it with the participant and the upload jobs.
 
 | Outcome | Meaning |
 |---|---|
@@ -126,23 +120,40 @@ Both callbacks run on `MainActor`. Each started attempt gets a new ID; associate
 | `.cancelled(reason)` | The attempt was reset, terminated or cancelled. |
 | `.failedToStart(error)` | Startup failed. The error is also thrown to the caller. |
 
-Batch counts cover the whole session, including earlier attempts. Empty queries count as successful and produce no file, including when HealthKit read access is denied.
-Survey completion, local export success and confirmed uploads are separate. Report outcomes and upload status to your backend as needed.
+Batch counts cover the whole session, including earlier attempts. An empty query counts as successful and produces no file, also when HealthKit read access is denied.
+Survey completion, local export success and confirmed uploads are separate events.
 
-Keep files and upload jobs across attempts: resumed streams only yield newly processed files.
-Callbacks are not saved or replayed after app termination, and starting an already-running or completed session produces no new callbacks.
+Keep files and upload jobs across attempts: a resumed stream yields only newly processed files.
+Callbacks are not saved or replayed after app termination, and starting a running or completed session produces no new callbacks.
 
-### Recovering an export
+### Exported files
 
-Unfinished exports retry on the next launch, including failed starts. To retry sooner, resolve the error and call `triggerHealthExport()`.
-There is no automatic retry loop. Storage errors may require freeing space, waiting for availability or correcting permissions; invalid configuration needs fixing.
+Each batch is one file named `<HealthKit type identifier>_<UUID>.json.zlib`. It holds a zlib-compressed FHIR R4 Bundle in the [Grove exchange format](https://grovealliance.org/fhir/healthkit/).
 
-A normal retry keeps completed batches and the original participant ID, sample types and date range.
-After a failed progress save, restarting the app may repeat batches. Deduplicate samples by participant ID and HealthKit UUID.
+| Content | Representation |
+|---|---|
+| Participant | The subject of each sample's resource, identified by `participantID` under `https://schmiedmayerlab.stanford.edu/fhir/onesec/identifiers/participant`. |
+| HealthKit UUID | An identifier on each sample's resource, in lowercase. Its system ends in `/healthkit-native-record` and is specific to the participant's HealthKit store. |
+| Grove identifiers | Derived from a random key that the package creates on first use and stores in the iCloud-synchronized keychain. |
+| Omitted facts | The name of the source that wrote a sample, a source bundle identifier of the form `com.apple.health.<UUID>`, and the recording device's name, serial number, UDI and local identifier. |
 
-Use `triggerHealthExport(forceSessionReset: true)` to start over or change the participant ID or export configuration.
-An export that a package version without `participantID` left unfinished starts over on the next `triggerHealthExport()` after `participantID` is set.
-Reset reports cancellation for an active attempt; its file stream may still be draining.
+The key survives a reinstall. With iCloud Keychain enabled, the participant's devices share it once it has synchronized, and a sample then gets the same source-record identifier on each of them.
+
+Samples that Grove cannot convert are skipped, and a batch without convertible samples produces no file.
+The package counts skipped samples by sample type and Grove diagnostic code in `skipped-samples.json` in `destination`. The file holds no sample values.
+If it exists, the file stream yields it after the batch files of each attempt. Its counts cover the whole session, and a repeated batch is counted again.
+
+### Export recovery
+
+An unfinished export, including one that failed to start, retries on the next launch. To retry sooner, resolve the error and call `triggerHealthExport()`. The package does not retry on its own while the app runs.
+
+A retry keeps completed batches and the original participant ID, sample types and date range.
+After a failed progress save, restarting the app can repeat batches. Deduplicate samples by participant ID and HealthKit UUID.
+
+`triggerHealthExport(forceSessionReset: true)` starts over and adopts the current `participantID` and export configuration. It reports cancellation for an active attempt, whose file stream may still be draining.
+
+An export started without `participantID` fails with `OneSecStanfordStudyModule.HealthExportError.missingParticipantID`.
+An export that a package version without `participantID` left unfinished starts over on the first `triggerHealthExport()` after `participantID` is set.
 
 ### Sample types
 
