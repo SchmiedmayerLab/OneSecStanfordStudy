@@ -25,10 +25,14 @@ It supports iOS 15 and newer. The study runs on iOS 18 and newer; on earlier ver
 
 ## Installation
 
-Add the package with a branch dependency:
+Use a toolchain with Swift 6.3 or newer.
+
+In Xcode, choose **File > Add Package Dependencies**, enter `https://github.com/SchmiedmayerLab/OneSecStanfordStudy.git`, and select **Up to Next Minor Version** starting at `0.2.0`. Add the `OneSecStanfordStudy` product to the app target.
+
+For a Swift package, add the dependency to `Package.swift`:
 
 ```swift
-.package(url: "https://github.com/SchmiedmayerLab/OneSecStanfordStudy.git", branch: "main")
+.package(url: "https://github.com/SchmiedmayerLab/OneSecStanfordStudy.git", .upToNextMinor(from: "0.2.0"))
 ```
 
 Add the `OneSecStanfordStudy` product to your app target:
@@ -42,6 +46,7 @@ Add the `OneSecStanfordStudy` product to your app target:
 )
 ```
 
+Enable the HealthKit capability on the app target and set `NSHealthShareUsageDescription` to explain why the study reads health data.
 
 ## Usage
 
