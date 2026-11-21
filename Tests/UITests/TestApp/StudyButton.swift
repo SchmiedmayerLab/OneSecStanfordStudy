@@ -17,6 +17,7 @@ struct StudyButton: View {
     var body: some View {
         Button("Initiate Flow") {
             oneSecStanfordStudy.surveyUrl = try? URL("https://redcap.stanford.edu/surveys/?s=R73YCP9CTL9MDYAW", strategy: .url)
+            oneSecStanfordStudy.participantID = "test-participant"
             isShowingSheet = true
         }
         .sheet(isPresented: $isShowingSheet) {
