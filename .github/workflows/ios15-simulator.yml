@@ -7,9 +7,9 @@
 #
 
 # Temporary check: launches the UI test app and runs its UI tests on an iOS 15.5 simulator.
-# Apple lists its iOS 15 simulator runtimes as supported up to Xcode 26.99 and macOS 26.99 only, and Xcode 27 does
-# not download them, so the runtime is unpacked from Apple's package and installed by hand; the run shows whether
-# CoreSimulator still accepts it. The runtime is removed again at the end.
+# CoreSimulator refuses iOS 15 runtimes on hosts after macOS 26.99.99, which rules out the self-hosted macOS 27
+# runners, so this runs on a GitHub-hosted macOS 26 runner with Xcode 26.6. Xcode does not download iOS 15 runtimes,
+# so the runtime is unpacked from Apple's package and installed by hand, and removed again at the end.
 
 name: iOS 15 Simulator
 
@@ -24,9 +24,10 @@ permissions:
 jobs:
   ios15:
     name: Test app on iOS 15.5
-    runs-on: [self-hosted, macOS]
+    runs-on: macos-26
     timeout-minutes: 90
     env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
       RUNTIME_VERSION: "15.5"
       RUNTIME_URL: https://devimages-cdn.apple.com/downloads/xcode/simulators/com.apple.pkg.iPhoneSimulatorSDK15_5-15.5.1.1653527639.dmg
     steps:
