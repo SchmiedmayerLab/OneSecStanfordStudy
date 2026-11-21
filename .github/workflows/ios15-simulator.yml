@@ -1,0 +1,183 @@
+#
+# This source file is part of the One Sec Stanford Study open-source project
+#
+# SPDX-FileCopyrightText: 2026 Stanford University and the project authors (see CONTRIBUTORS.md)
+#
+# SPDX-License-Identifier: MIT
+#
+
+# Temporary check: launches the UI test app and runs its UI tests on an iOS 15.5 simulator.
+# Apple lists its iOS 15 simulator runtimes as supported up to Xcode 26.99 and macOS 26.99 only, and Xcode 27 does
+# not download them, so the runtime is unpacked from Apple's package and installed by hand; the run shows whether
+# CoreSimulator still accepts it. The runtime is removed again at the end.
+
+name: iOS 15 Simulator
+
+on:
+  push:
+    branches:
+      - lukas/ios15-simulator-smoke
+
+permissions:
+  contents: read
+
+jobs:
+  ios15:
+    name: Test app on iOS 15.5
+    runs-on: [self-hosted, macOS]
+    timeout-minutes: 90
+    env:
+      RUNTIME_VERSION: "15.5"
+      RUNTIME_URL: https://devimages-cdn.apple.com/downloads/xcode/simulators/com.apple.pkg.iPhoneSimulatorSDK15_5-15.5.1.1653527639.dmg
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Describe the runner
+        run: |
+          sw_vers
+          uname -m
+          for xcode in /Applications/Xcode*.app; do
+            echo "$xcode: $(defaults read "$xcode/Contents/Info" CFBundleShortVersionString 2>/dev/null)"
+          done
+          echo "DEVELOPER_DIR=${DEVELOPER_DIR:-unset}"
+          xcodebuild -version
+          if sudo -n true 2>/dev/null; then echo "sudo: available"; else echo "sudo: not available"; fi
+          df -h "$HOME"
+          xcrun simctl list runtimes
+
+      - name: Install the iOS 15.5 simulator runtime
+        id: runtime
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP"
+          curl -fsSL --retry 3 -o runtime.dmg "$RUNTIME_URL"
+          hdiutil attach runtime.dmg -nobrowse -readonly -mountpoint "$RUNNER_TEMP/runtime-dmg"
+          PKG=$(find "$RUNNER_TEMP/runtime-dmg" -maxdepth 2 -name '*.pkg' | head -1)
+          echo "package: $PKG"
+          pkgutil --expand-full "$PKG" "$RUNNER_TEMP/runtime-pkg"
+          hdiutil detach "$RUNNER_TEMP/runtime-dmg"
+          rm runtime.dmg
+          find "$RUNNER_TEMP/runtime-pkg" -maxdepth 4 | head -40
+          BUNDLE=$(find "$RUNNER_TEMP/runtime-pkg" -maxdepth 8 -type d -name '*.simruntime' | head -1)
+          if [ -z "$BUNDLE" ]; then
+            INFO=$(find "$RUNNER_TEMP/runtime-pkg" -maxdepth 4 -path '*/Payload/Contents/Info.plist' | head -1)
+            test -n "$INFO" || { echo "::error::No simulator runtime bundle in the package"; exit 1; }
+            BUNDLE=$(dirname "$(dirname "$INFO")")
+          fi
+          echo "runtime bundle: $BUNDLE"
+          plutil -p "$BUNDLE/Contents/Info.plist" | grep -E 'CFBundleIdentifier|CFBundleShortVersionString|CFBundleVersion' || true
+          if sudo -n true 2>/dev/null; then
+            DESTINATION_ROOT=/Library/Developer/CoreSimulator/Profiles/Runtimes
+            sudo mkdir -p "$DESTINATION_ROOT"
+          else
+            DESTINATION_ROOT="$HOME/Library/Developer/CoreSimulator/Profiles/Runtimes"
+            mkdir -p "$DESTINATION_ROOT"
+          fi
+          DESTINATION="$DESTINATION_ROOT/iOS $RUNTIME_VERSION.simruntime"
+          if [ -e "$DESTINATION" ]; then
+            echo "A runtime already exists at $DESTINATION; leaving it in place."
+          else
+            if sudo -n true 2>/dev/null; then
+              sudo mv "$BUNDLE" "$DESTINATION"
+              sudo chown -R root:wheel "$DESTINATION"
+            else
+              mv "$BUNDLE" "$DESTINATION"
+            fi
+            echo "installed=$DESTINATION" >> "$GITHUB_OUTPUT"
+          fi
+          rm -rf "$RUNNER_TEMP/runtime-pkg"
+          killall -9 com.apple.CoreSimulator.CoreSimulatorService 2>/dev/null || true
+          sleep 5
+          xcrun simctl list runtimes
+          xcrun simctl list runtimes -j | jq --arg v "$RUNTIME_VERSION" '.runtimes[] | select(.version | startswith($v))'
+
+      - name: Create and boot an iOS 15.5 simulator
+        id: simulator
+        run: |
+          set -euo pipefail
+          RUNTIMES=$(xcrun simctl list runtimes -j)
+          RUNTIME=$(echo "$RUNTIMES" | jq -r --arg v "$RUNTIME_VERSION" '.runtimes[] | select(.version | startswith($v)) | select(.isAvailable) | .identifier' | head -1)
+          if [ -z "$RUNTIME" ]; then
+            echo "::error::CoreSimulator does not offer an available iOS $RUNTIME_VERSION runtime with $(xcodebuild -version | head -1)"
+            echo "$RUNTIMES" | jq --arg v "$RUNTIME_VERSION" '.runtimes[] | select(.version | startswith($v)) | {identifier, isAvailable, availabilityError}'
+            exit 1
+          fi
+          DEVICE_TYPE=$(echo "$RUNTIMES" | jq -r --arg r "$RUNTIME" '.runtimes[] | select(.identifier == $r) | .supportedDeviceTypes[] | select(.name == "iPhone 13") | .identifier' | head -1)
+          if [ -z "$DEVICE_TYPE" ]; then
+            DEVICE_TYPE=$(echo "$RUNTIMES" | jq -r --arg r "$RUNTIME" '.runtimes[] | select(.identifier == $r) | .supportedDeviceTypes[] | select(.productFamily == "iPhone") | .identifier' | tail -1)
+          fi
+          UDID=$(xcrun simctl create "iOS $RUNTIME_VERSION Test" "$DEVICE_TYPE" "$RUNTIME")
+          echo "udid=$UDID" >> "$GITHUB_OUTPUT"
+          echo "runtime=$RUNTIME device-type=$DEVICE_TYPE udid=$UDID"
+          xcrun simctl bootstatus "$UDID" -b
+
+      - name: Build the test app and UI tests
+        run: |
+          set -o pipefail
+          xcodebuild build-for-testing \
+            -project Tests/UITests/UITests.xcodeproj -scheme TestApp \
+            -destination "platform=iOS Simulator,id=${{ steps.simulator.outputs.udid }}" \
+            -derivedDataPath "$RUNNER_TEMP/DerivedData" \
+            -skipMacroValidation -skipPackagePluginValidation
+
+      - name: Launch the test app directly
+        run: |
+          set -euo pipefail
+          UDID=${{ steps.simulator.outputs.udid }}
+          APP="$RUNNER_TEMP/DerivedData/Build/Products/Debug-iphonesimulator/TestApp.app"
+          vtool -show-build "$APP/TestApp" | grep -E 'platform|minos'
+          BUNDLE_ID=$(/usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' "$APP/Info.plist")
+          xcrun simctl install "$UDID" "$APP"
+          xcrun simctl launch "$UDID" "$BUNDLE_ID"
+          sleep 15
+          if ! xcrun simctl spawn "$UDID" launchctl list | grep -F "$BUNDLE_ID"; then
+            echo "::error::TestApp is not running 15 seconds after launch on iOS $RUNTIME_VERSION"
+            exit 1
+          fi
+          xcrun simctl terminate "$UDID" "$BUNDLE_ID"
+
+      - name: Run the UI tests on iOS 15.5
+        run: |
+          set -o pipefail
+          xcodebuild test-without-building \
+            -project Tests/UITests/UITests.xcodeproj -scheme TestApp \
+            -destination "platform=iOS Simulator,id=${{ steps.simulator.outputs.udid }}" \
+            -derivedDataPath "$RUNNER_TEMP/DerivedData" \
+            -resultBundlePath "$RUNNER_TEMP/iOS15.xcresult"
+
+      - name: Summarize the test results
+        if: always()
+        run: |
+          xcrun xcresulttool get test-results summary --path "$RUNNER_TEMP/iOS15.xcresult" --compact || true
+          xcrun xcresulttool get test-results tests --path "$RUNNER_TEMP/iOS15.xcresult" --compact || true
+
+      - name: Collect crash reports
+        if: always()
+        run: |
+          mkdir -p "$RUNNER_TEMP/crashes"
+          find ~/Library/Logs/DiagnosticReports -name 'TestApp*' -newer "$GITHUB_WORKSPACE/Package.swift" -exec cp {} "$RUNNER_TEMP/crashes/" \; 2>/dev/null || true
+          ls -la "$RUNNER_TEMP/crashes"
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: ios15-results
+          path: |
+            ${{ runner.temp }}/iOS15.xcresult
+            ${{ runner.temp }}/crashes
+          if-no-files-found: warn
+
+      - name: Remove the simulator and the runtime
+        if: always()
+        run: |
+          if [ -n "${{ steps.simulator.outputs.udid }}" ]; then
+            xcrun simctl shutdown "${{ steps.simulator.outputs.udid }}" 2>/dev/null || true
+            xcrun simctl delete "${{ steps.simulator.outputs.udid }}" || true
+          fi
+          INSTALLED="${{ steps.runtime.outputs.installed }}"
+          if [ -n "$INSTALLED" ]; then
+            if [[ "$INSTALLED" == /Library/* ]]; then sudo -n rm -rf "$INSTALLED"; else rm -rf "$INSTALLED"; fi
+            killall -9 com.apple.CoreSimulator.CoreSimulatorService 2>/dev/null || true
+          fi
+          rm -rf "$RUNNER_TEMP/DerivedData" "$RUNNER_TEMP/runtime-pkg" "$RUNNER_TEMP/runtime.dmg" "$RUNNER_TEMP/iOS15.xcresult" "$RUNNER_TEMP/crashes"
+          xcrun simctl list runtimes
