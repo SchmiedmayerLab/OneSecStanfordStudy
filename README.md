@@ -25,7 +25,7 @@ It supports iOS 15 and newer. The study runs on iOS 18 and newer; on earlier ver
 
 ## Installation
 
-Add the package with a branch dependency. It depends on a pinned Grove commit, so it cannot be used as a versioned dependency:
+Add the package with a branch dependency:
 
 ```swift
 .package(url: "https://github.com/SchmiedmayerLab/OneSecStanfordStudy.git", branch: "main")

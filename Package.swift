@@ -23,10 +23,9 @@ let package = Package(
         .library(name: "OneSecStanfordStudy", targets: ["OneSecStanfordStudy"])
     ],
     dependencies: [
-        // Pinned until Grove publishes an Apple 15 compatibility release that contains this commit.
         .package(
             url: "https://github.com/SchmiedmayerLab/Grove.git",
-            revision: "d34149c068e4e5f00ff5c577818690998327fe9e",
+            exact: "0.3.0-apple15-beta.16",
             traits: []
         )
     ],
