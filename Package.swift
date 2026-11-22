@@ -25,7 +25,7 @@ let package = Package(
     dependencies: [
         .package(
             url: "https://github.com/SchmiedmayerLab/Grove.git",
-            exact: "0.3.0-apple15-beta.16",
+            exact: "0.3.0-beta.17",
             traits: []
         )
     ],
